@@ -1,6 +1,7 @@
 const ASSET_PATHS = {
   ambience: "/audio/dark-ambience.mp3",
   dash: "/audio/dash-slash.wav",
+  thunder: "/audio/thunderclap.ogg",
 } as const;
 
 type AssetName = keyof typeof ASSET_PATHS;
@@ -12,6 +13,7 @@ function clamp(value: number, min: number, max: number) {
 export class GameAudio {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
+  private compressor: DynamicsCompressorNode | null = null;
   private musicBus: GainNode | null = null;
   private sfxBus: GainNode | null = null;
   private reverbBus: GainNode | null = null;
@@ -59,22 +61,58 @@ export class GameAudio {
     );
   }
 
-  playDash() {
+  playDash(ultimate = false) {
     this.ensureReady();
     // Layer 1: actual slash sample if available
     this.playBuffer("dash", {
-      gain: 0.3,
-      playbackRate: 0.9 + Math.random() * 0.15,
+      gain: ultimate ? 0.4 : 0.3,
+      playbackRate: ultimate ? 0.75 : 0.9 + Math.random() * 0.15,
       highpass: 140,
     });
+    if (ultimate) {
+      this.playBuffer("thunder", {
+        gain: 0.18,
+        playbackRate: 1.16,
+        highpass: 80,
+        lowpass: 2400,
+        delay: 0.01,
+      });
+    }
     // Layer 2: metallic sweep
-    this.playSweep(1200, 200, 0.12, "sawtooth", 0.06);
+    this.playSweep(
+      ultimate ? 1600 : 1200,
+      200,
+      ultimate ? 0.18 : 0.12,
+      "sawtooth",
+      ultimate ? 0.1 : 0.06,
+    );
     // Layer 3: sharp noise burst (sword air)
-    this.playNoiseBurst(0.08, 2000, 0.09);
+    this.playNoiseBurst(
+      ultimate ? 0.12 : 0.08,
+      ultimate ? 1600 : 2000,
+      ultimate ? 0.12 : 0.09,
+    );
     // Layer 4: sub-bass thump for weight
-    this.playTone(80, 40, 0.15, "sine", 0.12);
+    this.playTone(
+      ultimate ? 60 : 80,
+      30,
+      ultimate ? 0.25 : 0.15,
+      "sine",
+      ultimate ? 0.18 : 0.12,
+    );
     // Layer 5: high metallic ring
-    this.playTone(2400, 1800, 0.06, "sine", 0.03);
+    this.playTone(
+      ultimate ? 3200 : 2400,
+      1800,
+      ultimate ? 0.1 : 0.06,
+      "sine",
+      ultimate ? 0.05 : 0.03,
+    );
+    if (ultimate) {
+      // Extra layers for ultimate
+      this.playTone(440, 880, 0.2, "triangle", 0.06, 0.02);
+      this.playNoiseBurst(0.15, 800, 0.08, 0.03);
+    }
   }
 
   playKill() {
@@ -155,11 +193,17 @@ export class GameAudio {
     this.ensureReady();
     switch (kind) {
       case "lightning":
-        // Electric crackle
-        this.playNoiseBurst(0.08, 2800, 0.1);
-        this.playTone(900, 1600, 0.06, "square", 0.08);
-        this.playTone(1800, 3200, 0.04, "square", 0.04);
-        this.playTone(120, 60, 0.1, "sine", 0.06);
+        this.playBuffer("thunder", {
+          gain: 0.18,
+          playbackRate: 1.2 + Math.random() * 0.18,
+          highpass: 120,
+          lowpass: 2800,
+        });
+        this.playNoiseBurst(0.09, 2400, 0.12);
+        this.playNoiseBurst(0.06, 5200, 0.06, 0.015);
+        this.playTone(720, 1800, 0.08, "square", 0.08);
+        this.playTone(1600, 3600, 0.05, "sawtooth", 0.04, 0.01);
+        this.playTone(90, 48, 0.18, "sine", 0.12);
         break;
       case "fire":
         // Whoosh + crackle
@@ -188,9 +232,60 @@ export class GameAudio {
     }
   }
 
+  playScroll(kind: "storm" | "blood" | "shadow") {
+    this.ensureReady();
+    if (kind === "storm") {
+      this.playBuffer("thunder", {
+        gain: 0.2,
+        playbackRate: 1.08,
+        highpass: 90,
+        lowpass: 2600,
+      });
+      this.playTone(520, 980, 0.14, "triangle", 0.08);
+      this.playNoiseBurst(0.08, 2800, 0.07);
+      return;
+    }
+    if (kind === "blood") {
+      this.playTone(180, 110, 0.22, "sawtooth", 0.08);
+      this.playTone(96, 72, 0.35, "sine", 0.12);
+      this.playNoiseBurst(0.06, 700, 0.05);
+      return;
+    }
+    this.playSweep(280, 140, 0.24, "triangle", 0.06);
+    this.playTone(660, 330, 0.18, "sine", 0.04);
+    this.playNoiseBurst(0.05, 1800, 0.03);
+  }
+
+  playUltimateReady() {
+    this.ensureReady();
+    this.playTone(440, 660, 0.12, "triangle", 0.08);
+    this.playTone(660, 990, 0.16, "sine", 0.05, 0.04);
+    this.playTone(110, 110, 0.28, "sine", 0.06);
+  }
+
+  playUltimateCast() {
+    this.ensureReady();
+    this.playBuffer("thunder", {
+      gain: 0.24,
+      playbackRate: 0.96,
+      highpass: 70,
+      lowpass: 2200,
+    });
+    this.playNoiseBurst(0.15, 1800, 0.16);
+    this.playNoiseBurst(0.09, 4200, 0.08, 0.02);
+    this.playSweep(1800, 180, 0.24, "sawtooth", 0.11);
+    this.playTone(65, 36, 0.4, "sine", 0.2);
+  }
+
   playBossWarning() {
     this.ensureReady();
     // Ominous drums
+    this.playBuffer("thunder", {
+      gain: 0.12,
+      playbackRate: 0.92,
+      highpass: 60,
+      lowpass: 1800,
+    });
     this.playTone(65, 40, 0.5, "sine", 0.18);
     this.playNoiseBurst(0.15, 200, 0.12);
     this.playTone(87.31, 65, 0.4, "sine", 0.14, 0.3);
@@ -207,6 +302,7 @@ export class GameAudio {
     }
     this.ctx = null;
     this.master = null;
+    this.compressor = null;
     this.musicBus = null;
     this.sfxBus = null;
     this.reverbBus = null;
@@ -225,6 +321,7 @@ export class GameAudio {
 
     this.ctx = new AudioCtor();
     this.master = this.ctx.createGain();
+    this.compressor = this.ctx.createDynamicsCompressor();
     this.musicBus = this.ctx.createGain();
     this.sfxBus = this.ctx.createGain();
     this.reverbBus = this.ctx.createGain();
@@ -232,6 +329,11 @@ export class GameAudio {
     this.ambienceGain = this.ctx.createGain();
 
     this.master.gain.value = 0.85;
+    this.compressor.threshold.value = -18;
+    this.compressor.knee.value = 18;
+    this.compressor.ratio.value = 3;
+    this.compressor.attack.value = 0.003;
+    this.compressor.release.value = 0.18;
     this.musicBus.gain.value = 0.6;
     this.sfxBus.gain.value = 0.88;
     this.reverbBus.gain.value = 0.25;
@@ -252,7 +354,8 @@ export class GameAudio {
     this.reverbConvolver.connect(this.reverbBus);
     this.reverbBus.connect(this.master);
 
-    this.master.connect(this.ctx.destination);
+    this.master.connect(this.compressor);
+    this.compressor.connect(this.ctx.destination);
     this.ambienceGain.connect(this.ambienceFilter);
     this.ambienceFilter.connect(this.musicBus);
   }
@@ -340,6 +443,8 @@ export class GameAudio {
       gain: number;
       playbackRate?: number;
       highpass?: number;
+      lowpass?: number;
+      delay?: number;
     },
   ) {
     if (!this.ctx || !this.sfxBus) return;
@@ -353,18 +458,26 @@ export class GameAudio {
     const gain = this.ctx.createGain();
     gain.gain.value = options.gain;
 
+    let tail: AudioNode = source;
     if (options.highpass) {
       const filter = this.ctx.createBiquadFilter();
       filter.type = "highpass";
       filter.frequency.value = options.highpass;
-      source.connect(filter);
-      filter.connect(gain);
-    } else {
-      source.connect(gain);
+      tail.connect(filter);
+      tail = filter;
     }
+    if (options.lowpass) {
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.value = options.lowpass;
+      filter.Q.value = 0.6;
+      tail.connect(filter);
+      tail = filter;
+    }
+    tail.connect(gain);
 
     gain.connect(this.sfxBus);
-    source.start();
+    source.start(this.ctx.currentTime + (options.delay ?? 0));
   }
 
   private playTone(

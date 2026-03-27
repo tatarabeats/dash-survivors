@@ -359,6 +359,44 @@ export function drawOrb(
   ctx.restore();
 }
 
+export function drawScroll(
+  ctx: CanvasRenderingContext2D,
+  scroll: { kind: "storm" | "blood" | "shadow"; x: number; y: number; radius: number },
+  time: number,
+) {
+  const bob = Math.sin(time * 4 + scroll.x * 0.03) * 2.5;
+  const glow =
+    scroll.kind === "storm"
+      ? "rgba(245,213,126,0.85)"
+      : scroll.kind === "blood"
+        ? "rgba(207,46,47,0.82)"
+        : "rgba(163,155,189,0.85)";
+  const sigil = scroll.kind === "storm" ? "雷" : scroll.kind === "blood" ? "血" : "影";
+  ctx.save();
+  ctx.translate(scroll.x, scroll.y + bob);
+  ctx.shadowColor = glow;
+  ctx.shadowBlur = 18;
+
+  const paper = ctx.createLinearGradient(-12, -8, 12, 8);
+  paper.addColorStop(0, "#fbf1d9");
+  paper.addColorStop(1, "#c99d54");
+  ctx.fillStyle = paper;
+  ctx.beginPath();
+  ctx.roundRect(-11, -8, 22, 16, 5);
+  ctx.fill();
+
+  ctx.fillStyle = "#704514";
+  ctx.fillRect(-13, -8, 3, 16);
+  ctx.fillRect(10, -8, 3, 16);
+
+  ctx.fillStyle = glow.replace("0.85", "1").replace("0.82", "1");
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = `800 11px ${UI_FONT}`;
+  ctx.fillText(sigil, 0, 1);
+  ctx.restore();
+}
+
 export function drawProjectile(
   ctx: CanvasRenderingContext2D,
   projectile: {
@@ -603,6 +641,7 @@ export function drawEnemy(
     maxHp: number;
     primary: string;
     secondary: string;
+    elite: boolean;
   },
   time: number,
 ) {
@@ -788,6 +827,54 @@ export function drawEnemy(
     );
     ctx.fill();
   }
+
+  if (enemy.elite && enemy.kind !== "boss") {
+    const aura = 1 + Math.sin(time * 3.2) * 0.08;
+    ctx.strokeStyle = "rgba(245,213,126,0.78)";
+    ctx.lineWidth = 2.4;
+    ctx.shadowColor = "rgba(245,213,126,0.72)";
+    ctx.shadowBlur = 14;
+    ctx.beginPath();
+    ctx.arc(0, 0, enemy.radius * 1.18 * aura, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+  ctx.restore();
+}
+
+export function drawHazard(
+  ctx: CanvasRenderingContext2D,
+  hazard: {
+    x: number;
+    y: number;
+    radius: number;
+    life: number;
+    telegraph: number;
+    active: number;
+    color: string;
+  },
+  time: number,
+) {
+  const telegraphing = hazard.life > hazard.active;
+  const ratio = telegraphing
+    ? clamp((hazard.life - hazard.active) / hazard.telegraph, 0, 1)
+    : clamp(hazard.life / hazard.active, 0, 1);
+  const pulse = 1 + Math.sin(time * 10 + hazard.x * 0.03) * 0.05;
+  ctx.save();
+  ctx.globalAlpha = telegraphing ? 0.26 + (1 - ratio) * 0.18 : 0.42 * ratio;
+  ctx.fillStyle = telegraphing ? "rgba(135, 18, 20, 0.24)" : hazard.color;
+  ctx.beginPath();
+  ctx.arc(hazard.x, hazard.y, hazard.radius * pulse, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.globalAlpha = telegraphing ? 0.75 : 1;
+  ctx.strokeStyle = hazard.color;
+  ctx.lineWidth = telegraphing ? 2 : 4;
+  ctx.shadowColor = hazard.color;
+  ctx.shadowBlur = telegraphing ? 10 : 18;
+  ctx.beginPath();
+  ctx.arc(hazard.x, hazard.y, hazard.radius * pulse, 0, Math.PI * 2);
+  ctx.stroke();
   ctx.restore();
 }
 
@@ -895,9 +982,11 @@ export function drawHud(
     time: number;
     killCount: number;
     dashCooldownRatio: number;
+    ultimateRatio: number;
+    ultimateReady: boolean;
     skills: UiSkill[];
     hintAlpha: number;
-    boss: { hp: number; maxHp: number } | null;
+    boss: { hp: number; maxHp: number; rank: number } | null;
     bossWarning: number;
   },
 ) {
@@ -968,6 +1057,17 @@ export function drawHud(
   ctx.beginPath();
   ctx.arc(readyRingX, readyRingY, 24, 0, Math.PI * 2);
   ctx.fill();
+  ctx.strokeStyle = data.ultimateReady ? "#f5d57e" : "rgba(255,255,255,0.14)";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(
+    readyRingX,
+    readyRingY,
+    24,
+    -Math.PI / 2,
+    -Math.PI / 2 + Math.PI * 2 * clamp(data.ultimateRatio, 0, 1),
+  );
+  ctx.stroke();
   ctx.strokeStyle = "rgba(255,255,255,0.12)";
   ctx.lineWidth = 5;
   ctx.beginPath();
@@ -988,6 +1088,17 @@ export function drawHud(
   ctx.textAlign = "center";
   ctx.font = `700 10px ${UI_FONT}`;
   ctx.fillText("斬", readyRingX, readyRingY + 3);
+
+  ctx.fillStyle = "rgba(8,10,18,0.92)";
+  ctx.beginPath();
+  ctx.arc(readyRingX, readyRingY, 10, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#f5efe3";
+  ctx.font = `700 9px ${UI_FONT}`;
+  ctx.fillText("Dash", readyRingX, readyRingY + 4);
+  ctx.font = `700 8px ${UI_FONT}`;
+  ctx.fillStyle = data.ultimateReady ? "#f5d57e" : "rgba(255,255,255,0.55)";
+  ctx.fillText("ULT", readyRingX, readyRingY - 18);
 
   let skillX = 20;
   const skillY = CANVAS_HEIGHT - 72;
@@ -1038,6 +1149,17 @@ export function drawHud(
     ctx.textAlign = "center";
     ctx.font = `700 11px ${DISPLAY_FONT}`;
     ctx.fillText("大鬼", CANVAS_WIDTH / 2, 99);
+  }
+
+  if (data.boss) {
+    ctx.fillStyle = "rgba(5,7,13,0.85)";
+    ctx.beginPath();
+    ctx.roundRect(CANVAS_WIDTH / 2 - 78, 86, 156, 16, 8);
+    ctx.fill();
+    ctx.fillStyle = "#f1ddbb";
+    ctx.textAlign = "center";
+    ctx.font = `700 11px ${DISPLAY_FONT}`;
+    ctx.fillText(`BOSS RANK ${data.boss.rank}`, CANVAS_WIDTH / 2, 98);
   }
 
   if (data.hintAlpha > 0.02) {

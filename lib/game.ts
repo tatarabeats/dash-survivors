@@ -12,6 +12,7 @@ import {
   drawBackground,
   drawEmbers,
   drawEnemy,
+  drawHazard,
   drawFlamePatch,
   drawGameOver,
   drawHud,
@@ -21,6 +22,7 @@ import {
   drawPlayer,
   drawProjectile,
   drawRewardBanner,
+  drawScroll,
   drawScreenFlash,
   drawShuriken,
   drawShockwave,
@@ -53,8 +55,17 @@ type Player = {
   shurikenDamage: number;
   shurikenRadius: number;
   rerolls: number;
+  ultimate: number;
 };
-type Dash = { from: V; to: V; dir: V; progress: number; hits: Set<number> };
+type Dash = {
+  from: V;
+  to: V;
+  dir: V;
+  progress: number;
+  hits: Set<number>;
+  hitCount: number;
+  ultimate: boolean;
+};
 type Enemy = {
   id: number;
   kind: EnemyKind;
@@ -73,6 +84,10 @@ type Enemy = {
   seed: number;
   primary: string;
   secondary: string;
+  elite: boolean;
+  rank: number;
+  attackTimer: number;
+  scrollDrop: boolean;
 };
 type Projectile = {
   id: number;
@@ -101,6 +116,30 @@ type Flame = {
   tick: number;
 };
 type Orb = { id: number; x: number; y: number; value: number; magnet: boolean };
+type ScrollKind = "storm" | "blood" | "shadow";
+type Scroll = {
+  id: number;
+  kind: ScrollKind;
+  x: number;
+  y: number;
+  radius: number;
+  magnet: boolean;
+  life: number;
+  maxLife: number;
+};
+type Hazard = {
+  id: number;
+  x: number;
+  y: number;
+  radius: number;
+  damage: number;
+  telegraph: number;
+  active: number;
+  life: number;
+  maxLife: number;
+  color: string;
+  hit: boolean;
+};
 type Slash = {
   id: number;
   x: number;
@@ -173,6 +212,7 @@ const WAVE_SECONDS = 18;
 const UPGRADE_GUARD = 0.7;
 const MAX_ENEMIES = 120;
 const BASE_XP = 14;
+const ULTIMATE_MAX = 100;
 
 const ENEMY_DEF: Record<
   EnemyKind,
@@ -285,6 +325,8 @@ export class NinjaSurvivors {
   private projectiles: Projectile[] = [];
   private flames: Flame[] = [];
   private orbs: Orb[] = [];
+  private scrolls: Scroll[] = [];
+  private hazards: Hazard[] = [];
   private slashes: Slash[] = [];
   private bolts: Bolt[] = [];
   private particles: Particle[] = [];
@@ -307,7 +349,10 @@ export class NinjaSurvivors {
   private upgradeGuard = 0;
   private queuedLevelUps = 0;
   private paused = false;
+  private manualPause = false;
   private gameOver = false;
+  private lastTapTime = 0;
+  private lastTapPos: V = { x: 0, y: 0 };
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -333,7 +378,24 @@ export class NinjaSurvivors {
 
   onTouchStart(x: number, y: number) {
     this.resumeAudio();
+    // Pause button: top-right 50x50 area
+    if (!this.gameOver && !this.upgrades && x >= CANVAS_WIDTH - 50 && y <= 50) {
+      this.togglePause();
+      return;
+    }
+    if (this.manualPause) return;
     if (this.gameOver || this.upgrades) return;
+    // Double-tap detection for ultimate
+    const now = performance.now();
+    const dt = now - this.lastTapTime;
+    const tapDist = Math.hypot(x - this.lastTapPos.x, y - this.lastTapPos.y);
+    if (dt < 350 && tapDist < 60 && this.player.ultimate >= ULTIMATE_MAX) {
+      this.castUltimate();
+      this.lastTapTime = 0;
+      return;
+    }
+    this.lastTapTime = now;
+    this.lastTapPos = { x, y };
     this.aimStart = { x, y };
     this.aimCurrent = { x, y };
   }
@@ -419,6 +481,7 @@ export class NinjaSurvivors {
       shurikenDamage: 12,
       shurikenRadius: 54,
       rerolls: 2,
+      ultimate: 0,
     };
   }
 
@@ -446,6 +509,7 @@ export class NinjaSurvivors {
     if (!this.gameOver) this.hintTimer = Math.max(0, this.hintTimer - dt);
     this.updateFx(dt);
     if (this.gameOver) return;
+    if (this.manualPause) return;
     if (this.paused) {
       this.upgradeGuard = Math.max(0, this.upgradeGuard - dt);
       return;
@@ -461,7 +525,9 @@ export class NinjaSurvivors {
     this.updateSkills(sdt);
     this.updateProjectiles(sdt);
     this.updateFlames(sdt);
+    this.updateHazards(sdt);
     this.updateEnemies(sdt);
+    this.updateScrolls(sdt);
     this.updateOrbs(sdt);
     this.spawn(sdt);
     this.maybeBoss();
@@ -523,7 +589,10 @@ export class NinjaSurvivors {
       )
         continue;
       this.dash.hits.add(e.id);
-      e.hp -= this.player.dashDamage + this.player.level * 2.2;
+      this.dash.hitCount += 1;
+      e.hp -=
+        (this.player.dashDamage + this.player.level * 2.2) *
+        (this.dash.ultimate ? 2.75 : 1);
       e.hit = 0.16;
       const push = norm({ x: e.x - this.player.x, y: e.y - this.player.y });
       e.vx += push.x * 120;
@@ -535,15 +604,26 @@ export class NinjaSurvivors {
         id: this.next(),
         x: e.x,
         y: e.y,
-        radius: 18,
-        growth: 120,
-        color: "rgba(255,246,234,0.75)",
-        life: 0.18,
-        maxLife: 0.18,
+        radius: this.dash.ultimate ? 24 : 18,
+        growth: this.dash.ultimate ? 170 : 120,
+        color: this.dash.ultimate
+          ? "rgba(245,213,126,0.86)"
+          : "rgba(255,246,234,0.75)",
+        life: this.dash.ultimate ? 0.24 : 0.18,
+        maxLife: this.dash.ultimate ? 0.24 : 0.18,
       });
-      this.impact(e.x, e.y, "#fff6ea", 5, 140);
+      this.impact(
+        e.x,
+        e.y,
+        this.dash.ultimate ? "#f5d57e" : "#fff6ea",
+        this.dash.ultimate ? 9 : 5,
+        this.dash.ultimate ? 220 : 140,
+      );
+      this.gainUltimate(e.kind === "boss" ? 16 : e.elite ? 9 : 4);
     }
     if (this.dash.progress >= 1) {
+      const hitCount = this.dash.hitCount;
+      const wasUltimate = this.dash.ultimate;
       if (fireLv > 0) {
         this.audio.playSkill("fire");
         for (let i = 0; i < 4 + fireLv; i += 1) {
@@ -561,8 +641,12 @@ export class NinjaSurvivors {
         }
       }
       this.dash = null;
-      this.player.dashCooldown = DASH_COOLDOWN;
+      this.player.dashCooldown =
+        DASH_COOLDOWN + (hitCount === 0 ? 0.1 : 0) + (wasUltimate ? 0.04 : 0);
       this.fireTrailTimer = 0;
+      if (hitCount === 0) this.screenFlash = Math.max(this.screenFlash, 0.05);
+      if (hitCount >= 4) this.gainUltimate(8 + Math.min(10, hitCount));
+      if (wasUltimate) this.resolveUltimateSlash(hitCount);
     }
   }
 
@@ -795,6 +879,7 @@ export class NinjaSurvivors {
     for (let i = this.enemies.length - 1; i >= 0; i -= 1) {
       const e = this.enemies[i];
       e.hit = Math.max(0, e.hit - dt);
+      if (e.kind === "boss") this.updateBossEnemy(e, dt);
       const toPlayer = { x: this.player.x - e.x, y: this.player.y - e.y };
       const d = Math.max(1, Math.hypot(toPlayer.x, toPlayer.y));
       const dir = { x: toPlayer.x / d, y: toPlayer.y / d };
@@ -824,7 +909,8 @@ export class NinjaSurvivors {
         this.player.invulnerable <= 0 &&
         d <= e.radius + PLAYER_RADIUS
       ) {
-        this.player.hp -= e.damage * dt;
+        const pressure = e.elite ? 1.15 : 1;
+        this.player.hp -= e.damage * dt * pressure;
         this.trauma = Math.min(1, this.trauma + 0.03);
         if (Math.random() < 0.12)
           this.impact(this.player.x, this.player.y, "#ff8a7c", 2, 65);
@@ -841,28 +927,37 @@ export class NinjaSurvivors {
     const e = this.enemies[i];
     this.enemies.splice(i, 1);
     this.player.killCount += 1;
-    this.trauma = Math.min(1, this.trauma + (e.kind === "boss" ? 0.24 : 0.08));
+    this.trauma = Math.min(
+      1,
+      this.trauma + (e.kind === "boss" ? 0.24 : e.elite ? 0.14 : 0.08),
+    );
     this.screenFlash = Math.max(
       this.screenFlash,
-      e.kind === "boss" ? 0.22 : 0.06,
+      e.kind === "boss" ? 0.22 : e.elite ? 0.1 : 0.06,
     );
     this.shockwaves.push({
       id: this.next(),
       x: e.x,
       y: e.y,
-      radius: e.kind === "boss" ? 28 : 14,
-      growth: e.kind === "boss" ? 220 : 140,
-      color: e.kind === "boss" ? "rgba(226,71,62,0.9)" : "rgba(216,180,94,0.7)",
-      life: e.kind === "boss" ? 0.32 : 0.2,
-      maxLife: e.kind === "boss" ? 0.32 : 0.2,
+      radius: e.kind === "boss" ? 28 : e.elite ? 20 : 14,
+      growth: e.kind === "boss" ? 220 : e.elite ? 180 : 140,
+      color:
+        e.kind === "boss"
+          ? "rgba(226,71,62,0.9)"
+          : e.elite
+            ? "rgba(245,213,126,0.9)"
+            : "rgba(216,180,94,0.7)",
+      life: e.kind === "boss" ? 0.32 : e.elite ? 0.26 : 0.2,
+      maxLife: e.kind === "boss" ? 0.32 : e.elite ? 0.26 : 0.2,
     });
     this.impact(
       e.x,
       e.y,
       e.primary,
-      e.kind === "boss" ? 18 : 10,
-      e.kind === "boss" ? 230 : 160,
+      e.kind === "boss" ? 18 : e.elite ? 14 : 10,
+      e.kind === "boss" ? 230 : e.elite ? 190 : 160,
     );
+    this.gainUltimate(e.kind === "boss" ? 24 : e.elite ? 10 : 1.8);
     let xp = e.xp;
     while (xp > 0) {
       const value = xp >= 6 ? 3 : xp >= 3 ? 2 : 1;
@@ -877,6 +972,12 @@ export class NinjaSurvivors {
         magnet: false,
       });
     }
+    if (e.scrollDrop)
+      this.dropScroll(
+        e.x,
+        e.y,
+        e.kind === "boss" ? undefined : this.rollScrollKind(),
+      );
     this.audio.playKill();
   }
 
@@ -925,15 +1026,274 @@ export class NinjaSurvivors {
     }
   }
 
+  private updateScrolls(dt: number) {
+    for (let i = this.scrolls.length - 1; i >= 0; i -= 1) {
+      const scroll = this.scrolls[i];
+      scroll.life -= dt;
+      const d = dist(scroll, this.player);
+      if (d <= this.player.magnetRadius * 0.7 || scroll.magnet) {
+        scroll.magnet = true;
+        const dir = norm({
+          x: this.player.x - scroll.x,
+          y: this.player.y - scroll.y,
+        });
+        const speed = 150 + this.player.magnetRadius * 1.2;
+        scroll.x += dir.x * speed * dt;
+        scroll.y += dir.y * speed * dt;
+      }
+      if (d <= scroll.radius + PLAYER_RADIUS + 4) {
+        this.collectScroll(scroll);
+        this.scrolls.splice(i, 1);
+        continue;
+      }
+      if (scroll.life <= 0) this.scrolls.splice(i, 1);
+    }
+  }
+
+  private updateHazards(dt: number) {
+    for (let i = this.hazards.length - 1; i >= 0; i -= 1) {
+      const hazard = this.hazards[i];
+      hazard.life -= dt;
+      const activeWindow = hazard.life <= hazard.active;
+      if (
+        activeWindow &&
+        !hazard.hit &&
+        !this.dash &&
+        this.player.invulnerable <= 0 &&
+        dist(hazard, this.player) <= hazard.radius + PLAYER_RADIUS
+      ) {
+        hazard.hit = true;
+        this.player.hp -= hazard.damage;
+        this.freeze = Math.max(this.freeze, 0.03);
+        this.trauma = Math.min(1, this.trauma + 0.14);
+        this.screenFlash = Math.max(this.screenFlash, 0.12);
+        this.impact(this.player.x, this.player.y, "#ffb09c", 7, 180);
+      }
+      if (hazard.life <= 0) this.hazards.splice(i, 1);
+    }
+  }
+
+  private updateBossEnemy(enemy: Enemy, dt: number) {
+    enemy.attackTimer -= dt;
+    if (enemy.attackTimer > 0) return;
+    const rank = Math.max(1, enemy.rank);
+    const attackRoll = Math.random();
+    if (attackRoll < 0.46) {
+      this.spawnHazard(
+        enemy.x,
+        enemy.y,
+        90 + rank * 8,
+        0.78,
+        0.18,
+        16 + rank * 3.8,
+        "rgba(226,71,62,0.92)",
+      );
+    } else if (attackRoll < 0.82) {
+      const markers = 1 + Math.floor(rank / 4);
+      for (let i = 0; i < markers; i += 1) {
+        const fan = markers === 1 ? 0 : (i - (markers - 1) / 2) * 34;
+        const dir = norm({
+          x: enemy.x - this.player.x,
+          y: enemy.y - this.player.y,
+        });
+        const lateral = { x: -dir.y, y: dir.x };
+        this.spawnHazard(
+          this.player.x + lateral.x * fan,
+          this.player.y + lateral.y * fan,
+          38 + rank * 4,
+          0.62,
+          0.16,
+          14 + rank * 3.2,
+          "rgba(245,213,126,0.95)",
+        );
+      }
+    } else {
+      const summons = 2 + Math.floor(rank / 3);
+      for (let i = 0; i < summons; i += 1) {
+        const summonKind: EnemyKind =
+          rank >= 5 && Math.random() < 0.35
+            ? "tengu"
+            : Math.random() < 0.45
+              ? "oni"
+              : "yurei";
+        if (this.enemies.length < MAX_ENEMIES) this.spawnEnemy(summonKind);
+      }
+      this.screenFlash = Math.max(this.screenFlash, 0.08);
+    }
+    enemy.attackTimer = Math.max(1.9, 4.2 - rank * 0.14 + Math.random() * 0.6);
+  }
+
+  private spawnHazard(
+    x: number,
+    y: number,
+    radius: number,
+    telegraph: number,
+    active: number,
+    damage: number,
+    color: string,
+  ) {
+    this.hazards.push({
+      id: this.next(),
+      x,
+      y,
+      radius,
+      damage,
+      telegraph,
+      active,
+      life: telegraph + active,
+      maxLife: telegraph + active,
+      color,
+      hit: false,
+    });
+  }
+
+  private dropScroll(x: number, y: number, kind = this.rollScrollKind()) {
+    this.scrolls.push({
+      id: this.next(),
+      kind,
+      x,
+      y,
+      radius: 12,
+      magnet: false,
+      life: 18,
+      maxLife: 18,
+    });
+  }
+
+  private rollScrollKind(): ScrollKind {
+    const roll = Math.random();
+    if (roll < 0.36) return "storm";
+    if (roll < 0.69) return "blood";
+    return "shadow";
+  }
+
+  private collectScroll(scroll: Scroll) {
+    this.audio.playScroll(scroll.kind);
+    this.screenFlash = Math.max(this.screenFlash, 0.16);
+    this.shockwaves.push({
+      id: this.next(),
+      x: scroll.x,
+      y: scroll.y,
+      radius: 18,
+      growth: 160,
+      color:
+        scroll.kind === "storm"
+          ? "rgba(245,213,126,0.92)"
+          : scroll.kind === "blood"
+            ? "rgba(207,46,47,0.92)"
+            : "rgba(163,155,189,0.95)",
+      life: 0.22,
+      maxLife: 0.22,
+    });
+
+    if (scroll.kind === "storm") {
+      this.rewardBanner = {
+        title: "Storm Scroll",
+        subtitle: "Chain lightning and fill your finisher gauge.",
+        color: "rgba(245,213,126,1)",
+        life: 1.1,
+        maxLife: 1.1,
+      };
+      this.gainUltimate(40);
+      this.castStormBurst(3 + Math.floor(this.wave / 3), 26 + this.wave * 2.4);
+    } else if (scroll.kind === "blood") {
+      this.rewardBanner = {
+        title: "Blood Scroll",
+        subtitle: "Recover health and harden for the next exchange.",
+        color: "rgba(207,46,47,1)",
+        life: 1.1,
+        maxLife: 1.1,
+      };
+      this.player.maxHp += 6;
+      this.player.hp = Math.min(
+        this.player.maxHp,
+        this.player.hp + this.player.maxHp * 0.24,
+      );
+      this.player.invulnerable = Math.max(this.player.invulnerable, 0.28);
+    } else {
+      this.rewardBanner = {
+        title: "Shadow Scroll",
+        subtitle: "Your next dash becomes a finisher.",
+        color: "rgba(163,155,189,1)",
+        life: 1.1,
+        maxLife: 1.1,
+      };
+      this.gainUltimate(ULTIMATE_MAX);
+    }
+  }
+
+  private castStormBurst(count: number, damage: number) {
+    const targets = this.enemies
+      .map((enemy) => ({ enemy, d: dist(enemy, this.player) }))
+      .sort((a, b) => a.d - b.d)
+      .slice(0, count);
+    for (const { enemy } of targets) {
+      enemy.hp -= damage;
+      enemy.hit = 0.16;
+      const points: V[] = [this.player];
+      for (let i = 1; i < 4; i += 1) {
+        const t = i / 4;
+        const wave = (Math.random() - 0.5) * 32;
+        points.push({
+          x: lerp(this.player.x, enemy.x, t) + wave,
+          y: lerp(this.player.y, enemy.y, t) - wave * 0.3,
+        });
+      }
+      points.push({ x: enemy.x, y: enemy.y });
+      this.bolts.push({ id: this.next(), points, life: 0.22, maxLife: 0.22 });
+      this.impact(enemy.x, enemy.y, "#f5d57e", 6, 150);
+    }
+  }
+
+  private gainUltimate(amount: number) {
+    const before = this.player.ultimate;
+    this.player.ultimate = clamp(
+      this.player.ultimate + amount,
+      0,
+      ULTIMATE_MAX,
+    );
+    if (before < ULTIMATE_MAX && this.player.ultimate >= ULTIMATE_MAX) {
+      this.rewardBanner = {
+        title: "ULTIMATE READY",
+        subtitle: "Your next dash becomes a killing art.",
+        color: "rgba(245,213,126,1)",
+        life: 0.9,
+        maxLife: 0.9,
+      };
+      this.audio.playUltimateReady();
+      this.screenFlash = Math.max(this.screenFlash, 0.14);
+    }
+  }
+
+  private resolveUltimateSlash(hitCount: number) {
+    this.audio.playUltimateCast();
+    this.freeze = Math.max(this.freeze, 0.06);
+    this.screenFlash = Math.max(this.screenFlash, 0.22);
+    this.shockwaves.push({
+      id: this.next(),
+      x: this.player.x,
+      y: this.player.y,
+      radius: 38,
+      growth: 240,
+      color: "rgba(245,213,126,0.95)",
+      life: 0.34,
+      maxLife: 0.34,
+    });
+    this.castStormBurst(
+      4 + Math.min(4, Math.floor(hitCount / 2)),
+      34 + this.wave * 3.2,
+    );
+  }
+
   private spawn(dt: number) {
     if (this.hasBoss() && this.enemies.length >= MAX_ENEMIES / 2) return;
     this.spawnTimer -= dt;
     if (this.spawnTimer > 0) return;
-    const danger = 1 + this.time * 0.018;
-    this.spawnTimer = Math.max(0.2, 0.96 - danger * 0.048);
-    let budget = 1.1 + danger * 0.38 + Math.random() * 0.5;
-    if (this.time < 18) budget *= 0.75;
-    if (this.hasBoss()) budget *= 0.7;
+    const danger = 1 + this.time * 0.021;
+    this.spawnTimer = Math.max(0.18, 0.92 - danger * 0.054);
+    let budget = 1.2 + danger * 0.46 + Math.random() * 0.65;
+    if (this.time < 18) budget *= 0.82;
+    if (this.hasBoss()) budget *= 0.85;
     while (budget > 0 && this.enemies.length < MAX_ENEMIES) {
       const kind = this.pickEnemy(budget);
       budget -= ENEMY_DEF[kind].cost;
@@ -944,7 +1304,7 @@ export class NinjaSurvivors {
   private maybeBoss() {
     if (this.time < this.nextBossAt || this.hasBoss()) return;
     this.spawnEnemy("boss");
-    this.nextBossAt += 75;
+    this.nextBossAt += 60;
     this.bossWarning = 1.5;
     this.audio.playBossWarning();
   }
@@ -953,9 +1313,21 @@ export class NinjaSurvivors {
     const d = ENEMY_DEF[kind];
     const a = Math.random() * Math.PI * 2;
     const range = Math.max(CANVAS_WIDTH, CANVAS_HEIGHT) * 0.8 + rand(80, 170);
+    const rank = kind === "boss" ? Math.max(1, this.wave) : this.wave;
+    const eliteChance =
+      kind === "boss"
+        ? 0
+        : clamp((this.wave - 2) * 0.035 + (this.time > 75 ? 0.04 : 0), 0, 0.16);
+    const elite =
+      kind !== "boss" &&
+      this.time > 30 &&
+      Math.random() < eliteChance &&
+      (kind === "oni" || kind === "tengu" || kind === "kappa");
     const hpScale =
-      kind === "boss" ? 1 + this.wave * 0.12 : 1 + this.time * 0.012;
-    const spScale = 1 + this.time * 0.0016;
+      kind === "boss"
+        ? 1 + this.wave * 0.22
+        : 1 + this.time * 0.014 + (elite ? 0.6 : 0);
+    const spScale = 1 + this.time * 0.0019 + (elite ? 0.08 : 0);
     this.enemies.push({
       id: this.next(),
       kind,
@@ -965,15 +1337,25 @@ export class NinjaSurvivors {
       vy: 0,
       hp: d.hp * hpScale,
       maxHp: d.hp * hpScale,
-      radius: d.radius * (kind === "boss" ? 1 + this.wave * 0.025 : 1),
+      radius:
+        d.radius * (kind === "boss" ? 1 + this.wave * 0.032 : elite ? 1.08 : 1),
       speed: d.speed * spScale,
-      damage: d.damage + this.wave * (kind === "boss" ? 1.8 : 0.8),
-      xp: d.xp + (kind === "boss" ? this.wave : Math.floor(this.wave / 4)),
+      damage:
+        d.damage + this.wave * (kind === "boss" ? 2.6 : 1.05) + (elite ? 4 : 0),
+      xp:
+        d.xp +
+        (kind === "boss" ? this.wave * 2 : Math.floor(this.wave / 3)) +
+        (elite ? 3 : 0),
       hit: 0,
       orbit: 0,
       seed: Math.random() * Math.PI * 2,
-      primary: d.primary,
-      secondary: d.secondary,
+      primary: elite ? "#f5d57e" : d.primary,
+      secondary: elite ? "#7b4d16" : d.secondary,
+      elite,
+      rank,
+      attackTimer:
+        kind === "boss" ? Math.max(1.4, 3.8 - rank * 0.16) : rand(2.6, 4.8),
+      scrollDrop: kind === "boss" || (elite && Math.random() < 0.7),
     });
   }
 
@@ -1343,6 +1725,8 @@ export class NinjaSurvivors {
     this.projectiles = [];
     this.flames = [];
     this.orbs = [];
+    this.scrolls = [];
+    this.hazards = [];
     this.slashes = [];
     this.bolts = [];
     this.particles = [];
@@ -1353,7 +1737,7 @@ export class NinjaSurvivors {
     this.time = 0;
     this.wave = 1;
     this.spawnTimer = 0.4;
-    this.nextBossAt = 65;
+    this.nextBossAt = 58;
     this.bossWarning = 0;
     this.trauma = 0;
     this.freeze = 0;
@@ -1365,47 +1749,148 @@ export class NinjaSurvivors {
     this.upgradeGuard = 0;
     this.queuedLevelUps = 0;
     this.paused = false;
+    this.manualPause = false;
     this.gameOver = false;
+    this.lastTapTime = 0;
     this.openingParticles();
   }
 
   private startDash(dir: V) {
     if (this.dash || this.player.dashCooldown > 0) return;
+    const ultimate = this.player.ultimate >= ULTIMATE_MAX;
+    if (ultimate) this.player.ultimate = 0;
     this.dash = {
       from: { x: this.player.x, y: this.player.y },
       to: {
-        x: this.player.x + dir.x * this.player.dashDistance,
-        y: this.player.y + dir.y * this.player.dashDistance,
+        x:
+          this.player.x +
+          dir.x * this.player.dashDistance * (ultimate ? 1.22 : 1),
+        y:
+          this.player.y +
+          dir.y * this.player.dashDistance * (ultimate ? 1.22 : 1),
       },
       dir,
       progress: 0,
       hits: new Set<number>(),
+      hitCount: 0,
+      ultimate,
     };
     this.player.invulnerable = DASH_DURATION + 0.08;
     this.fireTrailTimer = 0;
-    this.audio.playDash();
-    this.screenFlash = Math.max(this.screenFlash, 0.12);
+    this.audio.playDash(ultimate);
+    this.screenFlash = Math.max(this.screenFlash, ultimate ? 0.18 : 0.12);
     this.shockwaves.push({
       id: this.next(),
       x: this.player.x,
       y: this.player.y,
-      radius: 22,
-      growth: 180,
-      color: "rgba(207,46,47,0.85)",
-      life: 0.2,
-      maxLife: 0.2,
+      radius: ultimate ? 30 : 22,
+      growth: ultimate ? 220 : 180,
+      color: ultimate ? "rgba(245,213,126,0.95)" : "rgba(207,46,47,0.85)",
+      life: ultimate ? 0.26 : 0.2,
+      maxLife: ultimate ? 0.26 : 0.2,
     });
     this.slashes.push({
       id: this.next(),
       x: this.player.x + dir.x * 26,
       y: this.player.y + dir.y * 26,
       angle: Math.atan2(dir.y, dir.x),
-      radius: this.player.dashDistance * 0.42,
-      span: 0.72,
-      color: "rgba(207,46,47,0.8)",
-      life: 0.22,
-      maxLife: 0.22,
+      radius: this.player.dashDistance * (ultimate ? 0.58 : 0.42),
+      span: ultimate ? 0.92 : 0.72,
+      color: ultimate ? "rgba(245,213,126,0.95)" : "rgba(207,46,47,0.8)",
+      life: ultimate ? 0.28 : 0.22,
+      maxLife: ultimate ? 0.28 : 0.22,
     });
+    if (ultimate) {
+      this.rewardBanner = {
+        title: "ULTIMATE SLASH",
+        subtitle: "Next dash erupts into a boss-cutting finisher.",
+        color: "rgba(245,213,126,1)",
+        life: 0.9,
+        maxLife: 0.9,
+      };
+    }
+  }
+
+  private togglePause() {
+    if (this.gameOver || this.upgrades) return;
+    this.manualPause = !this.manualPause;
+    if (this.manualPause) {
+      this.cancelTouch();
+    }
+  }
+
+  private castUltimate() {
+    if (this.player.ultimate < ULTIMATE_MAX) return;
+    this.player.ultimate = 0;
+    this.audio.playDash(true);
+    this.screenFlash = 0.3;
+    this.trauma = Math.min(1, this.trauma + 0.4);
+    this.freeze = 0.08;
+    // Omnidirectional slash — 8 directions
+    for (let i = 0; i < 8; i++) {
+      const angle = (Math.PI * 2 * i) / 8;
+      this.slashes.push({
+        id: this.next(),
+        x: this.player.x + Math.cos(angle) * 30,
+        y: this.player.y + Math.sin(angle) * 30,
+        angle,
+        radius: 80,
+        span: 0.5,
+        color: "rgba(245,213,126,0.9)",
+        life: 0.3,
+        maxLife: 0.3,
+      });
+    }
+    // Shockwave
+    this.shockwaves.push({
+      id: this.next(),
+      x: this.player.x,
+      y: this.player.y,
+      radius: 40,
+      growth: 300,
+      color: "rgba(245,213,126,0.95)",
+      life: 0.35,
+      maxLife: 0.35,
+    });
+    // Damage all enemies in range
+    const ultimateRange = 160;
+    const ultimateDmg = this.player.dashDamage * 3 + this.player.level * 5;
+    for (const e of this.enemies) {
+      const d = dist(e, this.player);
+      if (d <= ultimateRange + e.radius) {
+        e.hp -= ultimateDmg;
+        e.hit = 0.2;
+        const push = norm({ x: e.x - this.player.x, y: e.y - this.player.y });
+        e.vx += push.x * 200;
+        e.vy += push.y * 200;
+        this.impact(e.x, e.y, "#f5d57e", 6, 180);
+      }
+    }
+    this.player.invulnerable = Math.max(this.player.invulnerable, 0.5);
+    // Particles burst
+    for (let i = 0; i < 24; i++) {
+      const a = (Math.PI * 2 * i) / 24;
+      const life = rand(0.2, 0.4);
+      this.particles.push({
+        id: this.next(),
+        x: this.player.x,
+        y: this.player.y,
+        vx: Math.cos(a) * rand(150, 280),
+        vy: Math.sin(a) * rand(150, 280),
+        size: rand(2.5, 5),
+        color: i % 3 === 0 ? "#f5d57e" : "#ffffff",
+        glow: 14,
+        life,
+        maxLife: life,
+      });
+    }
+    this.rewardBanner = {
+      title: "必殺・全方位斬",
+      subtitle: "周囲の敵を一掃する渾身の一撃",
+      color: "rgba(245,213,126,1)",
+      life: 1.0,
+      maxLife: 1.0,
+    };
   }
 
   private next() {
@@ -1431,6 +1916,8 @@ export class NinjaSurvivors {
     this.ctx.translate(-camX, -camY);
     for (const flame of this.flames) drawFlamePatch(this.ctx, flame, this.time);
     for (const orb of this.orbs) drawOrb(this.ctx, orb, this.time);
+    for (const scroll of this.scrolls) drawScroll(this.ctx, scroll, this.time);
+    for (const hazard of this.hazards) drawHazard(this.ctx, hazard, this.time);
     for (const wave of this.shockwaves) drawShockwave(this.ctx, wave);
     for (const slash of this.slashes) drawSlashEffect(this.ctx, slash);
     for (const bolt of this.bolts) drawLightning(this.ctx, bolt);
@@ -1476,6 +1963,8 @@ export class NinjaSurvivors {
       killCount: this.player.killCount,
       dashCooldownRatio:
         1 - clamp(this.player.dashCooldown / DASH_COOLDOWN, 0, 1),
+      ultimateRatio: this.player.ultimate / ULTIMATE_MAX,
+      ultimateReady: this.player.ultimate >= ULTIMATE_MAX,
       skills: this.skills.map((s) => ({
         key: s.key,
         name: SKILL_DEF[s.key].name,
@@ -1491,7 +1980,7 @@ export class NinjaSurvivors {
       boss:
         this.enemies
           .filter((e) => e.kind === "boss")
-          .map((e) => ({ hp: e.hp, maxHp: e.maxHp }))[0] ?? null,
+          .map((e) => ({ hp: e.hp, maxHp: e.maxHp, rank: e.rank }))[0] ?? null,
       bossWarning: this.bossWarning,
     });
     if (this.rewardBanner) drawRewardBanner(this.ctx, this.rewardBanner);
@@ -1518,5 +2007,52 @@ export class NinjaSurvivors {
         killCount: this.player.killCount,
         wave: this.wave,
       });
+    // Pause button (always visible during gameplay)
+    if (!this.gameOver && !this.upgrades) {
+      this.ctx.save();
+      this.ctx.fillStyle = "rgba(8,10,18,0.6)";
+      this.ctx.beginPath();
+      this.ctx.roundRect(CANVAS_WIDTH - 46, 8, 38, 38, 10);
+      this.ctx.fill();
+      this.ctx.strokeStyle = "rgba(255,255,255,0.2)";
+      this.ctx.lineWidth = 1;
+      this.ctx.beginPath();
+      this.ctx.roundRect(CANVAS_WIDTH - 46, 8, 38, 38, 10);
+      this.ctx.stroke();
+      // Pause/play icon
+      this.ctx.fillStyle = "#f5efe3";
+      if (this.manualPause) {
+        // Play triangle
+        this.ctx.beginPath();
+        this.ctx.moveTo(CANVAS_WIDTH - 34, 18);
+        this.ctx.lineTo(CANVAS_WIDTH - 34, 36);
+        this.ctx.lineTo(CANVAS_WIDTH - 18, 27);
+        this.ctx.closePath();
+        this.ctx.fill();
+      } else {
+        // Pause bars
+        this.ctx.fillRect(CANVAS_WIDTH - 35, 18, 5, 18);
+        this.ctx.fillRect(CANVAS_WIDTH - 24, 18, 5, 18);
+      }
+      this.ctx.restore();
+    }
+    // Pause overlay
+    if (this.manualPause) {
+      this.ctx.save();
+      this.ctx.fillStyle = "rgba(3,4,8,0.75)";
+      this.ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      this.ctx.fillStyle = "#f1ddbb";
+      this.ctx.textAlign = "center";
+      this.ctx.font = '800 32px "Shippori Mincho", "Yu Mincho", serif';
+      this.ctx.fillText("一時停止", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 10);
+      this.ctx.font = '500 14px "Noto Sans JP", "Hiragino Sans", sans-serif';
+      this.ctx.fillStyle = "rgba(255,255,255,0.6)";
+      this.ctx.fillText(
+        "画面右上をタップで再開",
+        CANVAS_WIDTH / 2,
+        CANVAS_HEIGHT / 2 + 24,
+      );
+      this.ctx.restore();
+    }
   }
 }
