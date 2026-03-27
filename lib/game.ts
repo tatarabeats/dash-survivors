@@ -1,1405 +1,1522 @@
-// ============================================================
-// DASH SURVIVORS - 突っ込むサバイバー
-// Right-thumb swipe to dash-attack through enemies
-// ============================================================
+"use client";
 
-// --- Types ---
-interface Vec2 {
-  x: number;
-  y: number;
-}
+import { GameAudio } from "./audio";
+import {
+  CANVAS_HEIGHT,
+  CANVAS_WIDTH,
+  RESTART_BUTTON,
+  REROLL_BUTTON,
+  UPGRADE_CARD,
+  drawAfterimage,
+  drawAimGuide,
+  drawBackground,
+  drawEmbers,
+  drawEnemy,
+  drawFlamePatch,
+  drawGameOver,
+  drawHud,
+  drawLightning,
+  drawOrb,
+  drawParticle,
+  drawPlayer,
+  drawProjectile,
+  drawRewardBanner,
+  drawScreenFlash,
+  drawShuriken,
+  drawShockwave,
+  drawSlashEffect,
+  drawUpgradeOverlay,
+  drawVignette,
+} from "./renderer";
 
-interface Player {
+export const GAME_WIDTH = CANVAS_WIDTH;
+export const GAME_HEIGHT = CANVAS_HEIGHT;
+
+type V = { x: number; y: number };
+type EnemyKind = "oni" | "kappa" | "tengu" | "yurei" | "boss";
+type SkillKey = "lightning" | "fire" | "shadow" | "wind" | "kunai";
+type Player = {
   x: number;
   y: number;
   hp: number;
   maxHp: number;
-  dashDir: Vec2 | null;
-  dashProgress: number; // 0-1
-  dashStart: Vec2;
-  dashTarget: Vec2;
-  dashCooldown: number;
-  dashSpeed: number;
-  dashDamage: number;
-  dashDistance: number;
-  invincibleTimer: number;
+  level: number;
   xp: number;
   xpToNext: number;
-  level: number;
   killCount: number;
-  magnetRange: number;
-}
-
-interface Enemy {
+  invulnerable: number;
+  dashCooldown: number;
+  dashDamage: number;
+  dashDistance: number;
+  magnetRadius: number;
+  shurikenCount: number;
+  shurikenDamage: number;
+  shurikenRadius: number;
+  rerolls: number;
+};
+type Dash = { from: V; to: V; dir: V; progress: number; hits: Set<number> };
+type Enemy = {
+  id: number;
+  kind: EnemyKind;
   x: number;
   y: number;
+  vx: number;
+  vy: number;
   hp: number;
   maxHp: number;
+  radius: number;
   speed: number;
   damage: number;
-  size: number;
-  type: EnemyType;
-  hitTimer: number;
-  xpValue: number;
-}
-
-type EnemyType = "basic" | "fast" | "tank" | "swarm" | "boss";
-
-interface XpOrb {
-  x: number;
-  y: number;
-  value: number;
-  magnet: boolean; // being pulled toward player
-}
-
-interface Projectile {
+  xp: number;
+  hit: number;
+  orbit: number;
+  seed: number;
+  primary: string;
+  secondary: string;
+};
+type Projectile = {
+  id: number;
+  kind: "kunai" | "wind";
   x: number;
   y: number;
   vx: number;
   vy: number;
+  radius: number;
   damage: number;
-  lifetime: number;
-  size: number;
-  color: string;
-  pierce: number;
-  hitEnemies: Set<number>;
-  weaponType: string;
-}
-
-interface Particle {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
   life: number;
   maxLife: number;
+  pierce: number;
+  homing: number;
   color: string;
-  size: number;
-}
-
-interface DashTrail {
+  hits: Set<number>;
+};
+type Flame = {
+  id: number;
   x: number;
   y: number;
+  radius: number;
+  damage: number;
   life: number;
-  size: number;
-}
-
-interface Weapon {
-  id: string;
-  name: string;
-  level: number;
-  maxLevel: number;
-  cooldown: number;
-  timer: number;
+  maxLife: number;
+  tick: number;
+};
+type Orb = { id: number; x: number; y: number; value: number; magnet: boolean };
+type Slash = {
+  id: number;
+  x: number;
+  y: number;
+  angle: number;
+  radius: number;
+  span: number;
   color: string;
-  icon: string;
-}
-
-interface Upgrade {
+  life: number;
+  maxLife: number;
+};
+type Bolt = { id: number; points: V[]; life: number; maxLife: number };
+type Particle = {
+  id: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  size: number;
+  color: string;
+  glow: number;
+  life: number;
+  maxLife: number;
+};
+type Skill = { key: SkillKey; level: number; timer: number };
+type Upgrade = {
   id: string;
-  name: string;
-  description: string;
+  title: string;
+  desc: string;
   icon: string;
-  apply: (game: DashSurvivors) => void;
-}
+  weight: number;
+  kind: "新術" | "強化" | "機動" | "生存" | "補助";
+  rarity: "COMMON" | "RARE" | "EPIC";
+  current?: string;
+  next?: string;
+  kicker?: string;
+  apply: (g: NinjaSurvivors) => void;
+};
+type Afterimage = {
+  id: number;
+  x: number;
+  y: number;
+  angle: number;
+  life: number;
+  maxLife: number;
+};
+type Shockwave = {
+  id: number;
+  x: number;
+  y: number;
+  radius: number;
+  growth: number;
+  color: string;
+  life: number;
+  maxLife: number;
+};
+type RewardBanner = {
+  title: string;
+  subtitle: string;
+  color: string;
+  life: number;
+  maxLife: number;
+};
 
-// --- Constants ---
-const W = 390;
-const H = 750;
-const PLAYER_SIZE = 16;
-const DASH_DURATION = 0.15; // seconds
-const DASH_COOLDOWN = 0.08;
-const BASE_DASH_DISTANCE = 120;
-const BASE_DASH_DAMAGE = 25;
-const XP_BASE = 10;
-const WAVE_INTERVAL = 15; // seconds between difficulty increases
+const PLAYER_RADIUS = 15;
+const DASH_DURATION = 0.13;
+const DASH_COOLDOWN = 0.19;
+const DASH_PULL_MIN = 22;
+const WAVE_SECONDS = 18;
+const UPGRADE_GUARD = 0.7;
+const MAX_ENEMIES = 120;
+const BASE_XP = 14;
 
-// --- Enemy Templates ---
-const ENEMY_TEMPLATES: Record<
-  EnemyType,
+const ENEMY_DEF: Record<
+  EnemyKind,
   {
+    cost: number;
     hp: number;
     speed: number;
     damage: number;
-    size: number;
+    radius: number;
     xp: number;
-    color: string;
+    primary: string;
+    secondary: string;
   }
 > = {
-  basic: { hp: 30, speed: 40, damage: 8, size: 12, xp: 1, color: "#e74c3c" },
-  fast: { hp: 15, speed: 80, damage: 5, size: 9, xp: 1, color: "#e67e22" },
-  tank: { hp: 120, speed: 20, damage: 15, size: 20, xp: 3, color: "#8e44ad" },
-  swarm: { hp: 10, speed: 55, damage: 3, size: 7, xp: 1, color: "#f39c12" },
-  boss: { hp: 500, speed: 15, damage: 25, size: 35, xp: 20, color: "#c0392b" },
+  oni: {
+    cost: 1,
+    hp: 40,
+    speed: 42,
+    damage: 18,
+    radius: 16,
+    xp: 1,
+    primary: "#cf2e2f",
+    secondary: "#5d1115",
+  },
+  kappa: {
+    cost: 1.1,
+    hp: 28,
+    speed: 72,
+    damage: 13,
+    radius: 13,
+    xp: 1,
+    primary: "#5cab56",
+    secondary: "#244e2a",
+  },
+  tengu: {
+    cost: 1.5,
+    hp: 60,
+    speed: 38,
+    damage: 22,
+    radius: 18,
+    xp: 2,
+    primary: "#b96a31",
+    secondary: "#5c2416",
+  },
+  yurei: {
+    cost: 0.95,
+    hp: 24,
+    speed: 54,
+    damage: 11,
+    radius: 14,
+    xp: 1,
+    primary: "#d9dde4",
+    secondary: "#76808c",
+  },
+  boss: {
+    cost: 6,
+    hp: 780,
+    speed: 24,
+    damage: 28,
+    radius: 34,
+    xp: 28,
+    primary: "#e2473e",
+    secondary: "#611417",
+  },
+};
+const SKILL_DEF: Record<
+  SkillKey,
+  { name: string; icon: string; color: string; cooldown: number }
+> = {
+  lightning: { name: "雷遁", icon: "雷", color: "#f5d57e", cooldown: 1.85 },
+  fire: { name: "火遁", icon: "火", color: "#ef7d32", cooldown: 0 },
+  shadow: { name: "影分身", icon: "影", color: "#a39bbd", cooldown: 3.9 },
+  wind: { name: "風遁", icon: "風", color: "#87ddd9", cooldown: 1.2 },
+  kunai: { name: "クナイ", icon: "刃", color: "#f5efe3", cooldown: 1.45 },
 };
 
-// --- Weapon Definitions ---
-function getWeaponDefs(): Record<
-  string,
-  { name: string; icon: string; color: string; baseCooldown: number }
-> {
-  return {
-    orbit: { name: "回転刃", icon: "🔪", color: "#3498db", baseCooldown: 0 },
-    burst: { name: "弾幕", icon: "💫", color: "#e74c3c", baseCooldown: 2.0 },
-    lightning: {
-      name: "雷撃",
-      icon: "⚡",
-      color: "#f1c40f",
-      baseCooldown: 1.5,
-    },
-    flame: { name: "炎の軌跡", icon: "🔥", color: "#e67e22", baseCooldown: 0 },
-    nova: { name: "衝撃波", icon: "💥", color: "#9b59b6", baseCooldown: 4.0 },
-    homing: { name: "追尾弾", icon: "🎯", color: "#1abc9c", baseCooldown: 1.2 },
-  };
-}
+const clamp = (v: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, v));
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+const dist = (a: V, b: V) => Math.hypot(a.x - b.x, a.y - b.y);
+const norm = (v: V) => {
+  const m = Math.hypot(v.x, v.y) || 1;
+  return { x: v.x / m, y: v.y / m };
+};
+const segDist = (p: V, a: V, b: V) => {
+  const ab = { x: b.x - a.x, y: b.y - a.y };
+  const ap = { x: p.x - a.x, y: p.y - a.y };
+  const t = clamp(
+    (ap.x * ab.x + ap.y * ab.y) / (ab.x * ab.x + ab.y * ab.y || 1),
+    0,
+    1,
+  );
+  return dist(p, { x: a.x + ab.x * t, y: a.y + ab.y * t });
+};
+const rand = (min: number, max: number) => min + Math.random() * (max - min);
 
-// --- Main Game Class ---
-export class DashSurvivors {
-  canvas: HTMLCanvasElement;
-  ctx: CanvasRenderingContext2D;
-  player: Player;
-  enemies: Enemy[] = [];
-  xpOrbs: XpOrb[] = [];
-  projectiles: Projectile[] = [];
-  particles: Particle[] = [];
-  dashTrails: DashTrail[] = [];
-  weapons: Weapon[] = [];
-  camera: Vec2 = { x: 0, y: 0 };
+export class NinjaSurvivors {
+  private canvas: HTMLCanvasElement;
+  private ctx: CanvasRenderingContext2D;
+  private audio = new GameAudio();
+  private frame = 0;
+  private last = 0;
+  private dead = false;
+  private id = 1;
+  private player = this.makePlayer();
+  private dash: Dash | null = null;
+  private aimStart: V | null = null;
+  private aimCurrent: V | null = null;
+  private enemies: Enemy[] = [];
+  private projectiles: Projectile[] = [];
+  private flames: Flame[] = [];
+  private orbs: Orb[] = [];
+  private slashes: Slash[] = [];
+  private bolts: Bolt[] = [];
+  private particles: Particle[] = [];
+  private afterimages: Afterimage[] = [];
+  private shockwaves: Shockwave[] = [];
+  private skills: Skill[] = [];
+  private shurikenAngle = 0;
+  private time = 0;
+  private wave = 1;
+  private spawnTimer = 0.4;
+  private nextBossAt = 65;
+  private bossWarning = 0;
+  private trauma = 0;
+  private freeze = 0;
+  private hintTimer = 12;
+  private fireTrailTimer = 0;
+  private screenFlash = 0;
+  private rewardBanner: RewardBanner | null = null;
+  private upgrades: Upgrade[] | null = null;
+  private upgradeGuard = 0;
+  private queuedLevelUps = 0;
+  private paused = false;
+  private gameOver = false;
 
-  gameTime: number = 0;
-  wave: number = 1;
-  spawnTimer: number = 0;
-  gameOver: boolean = false;
-  paused: boolean = false;
-  upgradeChoices: Upgrade[] | null = null;
-  pendingLevelUps: number = 0;
-
-  private animFrame: number = 0;
-  private lastTime: number = 0;
-  private destroyed: boolean = false;
-  private enemyIdCounter: number = 0;
-  private onStateChange: (() => void) | null = null;
-  private orbitAngle: number = 0;
-
-  // Touch state
-  private touchStart: Vec2 | null = null;
-  private swipeThreshold: number = 20;
-
-  constructor(canvas: HTMLCanvasElement, onStateChange?: () => void) {
+  constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d")!;
-    canvas.width = W;
-    canvas.height = H;
-    this.onStateChange = onStateChange || null;
-
-    this.player = {
-      x: 0,
-      y: 0,
-      hp: 100,
-      maxHp: 100,
-      dashDir: null,
-      dashProgress: 0,
-      dashStart: { x: 0, y: 0 },
-      dashTarget: { x: 0, y: 0 },
-      dashCooldown: 0,
-      dashSpeed: 1,
-      dashDamage: BASE_DASH_DAMAGE,
-      dashDistance: BASE_DASH_DISTANCE,
-      invincibleTimer: 0,
-      xp: 0,
-      xpToNext: XP_BASE,
-      level: 1,
-      killCount: 0,
-      magnetRange: 60,
-    };
-
-    // Start with orbit weapon
-    this.addWeapon("orbit");
+    canvas.width = CANVAS_WIDTH;
+    canvas.height = CANVAS_HEIGHT;
+    this.openingParticles();
   }
 
-  // --- Weapon Management ---
-  addWeapon(id: string) {
-    const def = getWeaponDefs()[id];
-    if (!def) return;
-    const existing = this.weapons.find((w) => w.id === id);
-    if (existing) {
-      existing.level = Math.min(existing.level + 1, existing.maxLevel);
-      return;
-    }
-    this.weapons.push({
-      id,
-      name: def.name,
-      level: 1,
-      maxLevel: 5,
-      cooldown: def.baseCooldown,
-      timer: 0,
-      color: def.color,
-      icon: def.icon,
-    });
+  start() {
+    this.frame = requestAnimationFrame((t) => this.loop(t));
   }
 
-  // --- Upgrade System ---
-  private generateUpgrades(): Upgrade[] {
-    const allUpgrades: Upgrade[] = [];
-    const defs = getWeaponDefs();
-
-    // New weapons
-    for (const [id, def] of Object.entries(defs)) {
-      if (!this.weapons.find((w) => w.id === id)) {
-        allUpgrades.push({
-          id: `new_${id}`,
-          name: def.name,
-          icon: def.icon,
-          description: `${def.name}を獲得`,
-          apply: (g) => g.addWeapon(id),
-        });
-      }
-    }
-
-    // Upgrade existing weapons
-    for (const w of this.weapons) {
-      if (w.level < w.maxLevel) {
-        allUpgrades.push({
-          id: `up_${w.id}`,
-          name: w.name,
-          icon: w.icon,
-          description: `${w.name} Lv${w.level + 1}`,
-          apply: (g) => {
-            const wep = g.weapons.find((x) => x.id === w.id);
-            if (wep) wep.level = Math.min(wep.level + 1, wep.maxLevel);
-          },
-        });
-      }
-    }
-
-    // Stat upgrades
-    allUpgrades.push({
-      id: "dash_dmg",
-      name: "ダッシュ攻撃力",
-      icon: "⚔️",
-      description: `ダッシュ攻撃+15`,
-      apply: (g) => {
-        g.player.dashDamage += 15;
-      },
-    });
-    allUpgrades.push({
-      id: "dash_dist",
-      name: "ダッシュ距離",
-      icon: "💨",
-      description: `ダッシュ距離+30`,
-      apply: (g) => {
-        g.player.dashDistance += 30;
-      },
-    });
-    allUpgrades.push({
-      id: "max_hp",
-      name: "最大HP",
-      icon: "❤️",
-      description: `最大HP+25 & 全回復`,
-      apply: (g) => {
-        g.player.maxHp += 25;
-        g.player.hp = g.player.maxHp;
-      },
-    });
-    allUpgrades.push({
-      id: "magnet",
-      name: "磁力範囲",
-      icon: "🧲",
-      description: `XP吸収範囲+30`,
-      apply: (g) => {
-        g.player.magnetRange += 30;
-      },
-    });
-    allUpgrades.push({
-      id: "heal",
-      name: "回復",
-      icon: "💚",
-      description: `HP 30% 回復`,
-      apply: (g) => {
-        g.player.hp = Math.min(
-          g.player.hp + g.player.maxHp * 0.3,
-          g.player.maxHp,
-        );
-      },
-    });
-
-    // Shuffle and pick 3
-    for (let i = allUpgrades.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [allUpgrades[i], allUpgrades[j]] = [allUpgrades[j], allUpgrades[i]];
-    }
-    return allUpgrades.slice(0, 3);
+  destroy() {
+    this.dead = true;
+    cancelAnimationFrame(this.frame);
+    this.audio.destroy();
   }
 
-  selectUpgrade(index: number) {
-    if (!this.upgradeChoices) return;
-    const choice = this.upgradeChoices[index];
-    if (choice) {
-      choice.apply(this);
-    }
-    this.upgradeChoices = null;
-    this.pendingLevelUps--;
-
-    if (this.pendingLevelUps > 0) {
-      this.upgradeChoices = this.generateUpgrades();
-    } else {
-      this.paused = false;
-    }
-    this.emitState();
+  resumeAudio() {
+    void this.audio.unlock();
   }
 
-  // --- Touch Handling ---
   onTouchStart(x: number, y: number) {
-    if (this.gameOver) return;
-    if (this.upgradeChoices) return; // handled by UI
-    this.touchStart = { x, y };
+    this.resumeAudio();
+    if (this.gameOver || this.upgrades) return;
+    this.aimStart = { x, y };
+    this.aimCurrent = { x, y };
   }
 
   onTouchMove(x: number, y: number) {
-    // Could show swipe preview
+    if (!this.aimStart) return;
+    this.aimCurrent = { x, y };
+  }
+
+  cancelTouch() {
+    this.aimStart = null;
+    this.aimCurrent = null;
   }
 
   onTouchEnd(x: number, y: number) {
-    if (this.gameOver || this.upgradeChoices || !this.touchStart) return;
-
-    const dx = x - this.touchStart.x;
-    const dy = y - this.touchStart.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-
-    if (dist > this.swipeThreshold) {
-      // Swipe detected → dash in that direction
-      const nx = dx / dist;
-      const ny = dy / dist;
-      this.startDash(nx, ny);
+    if (!this.aimStart || this.gameOver || this.upgrades) {
+      this.cancelTouch();
+      return;
     }
-    this.touchStart = null;
+    const dx = x - this.aimStart.x;
+    const dy = y - this.aimStart.y;
+    if (Math.hypot(dx, dy) >= DASH_PULL_MIN)
+      this.startDash(norm({ x: -dx, y: -dy }));
+    this.cancelTouch();
   }
 
-  private startDash(nx: number, ny: number) {
-    const p = this.player;
-    if (p.dashDir || p.dashCooldown > 0) return;
-
-    p.dashDir = { x: nx, y: ny };
-    p.dashStart = { x: p.x, y: p.y };
-    p.dashTarget = {
-      x: p.x + nx * p.dashDistance,
-      y: p.y + ny * p.dashDistance,
-    };
-    p.dashProgress = 0;
-    p.invincibleTimer = DASH_DURATION + 0.05;
-  }
-
-  // --- Spawning ---
-  private spawnEnemies(dt: number) {
-    this.spawnTimer -= dt;
-    if (this.spawnTimer > 0) return;
-
-    const wave = this.wave;
-    const baseRate = Math.max(0.3, 1.5 - wave * 0.08);
-    this.spawnTimer = baseRate;
-
-    // How many to spawn
-    const count = Math.min(1 + Math.floor(wave / 3), 8);
-
-    for (let i = 0; i < count; i++) {
-      let type: EnemyType = "basic";
-      const r = Math.random();
-      if (wave >= 10 && r < 0.03) type = "boss";
-      else if (wave >= 5 && r < 0.15) type = "tank";
-      else if (wave >= 3 && r < 0.3) type = "fast";
-      else if (wave >= 2 && r < 0.5) type = "swarm";
-
-      const template = ENEMY_TEMPLATES[type];
-      const hpMult = 1 + (wave - 1) * 0.15;
-
-      // Spawn from edge of visible area
-      const angle = Math.random() * Math.PI * 2;
-      const spawnDist = Math.max(W, H) * 0.6;
-      const ex = this.player.x + Math.cos(angle) * spawnDist;
-      const ey = this.player.y + Math.sin(angle) * spawnDist;
-
-      this.enemies.push({
-        x: ex,
-        y: ey,
-        hp: template.hp * hpMult,
-        maxHp: template.hp * hpMult,
-        speed: template.speed * (0.9 + Math.random() * 0.2),
-        damage: template.damage + wave,
-        size: template.size,
-        type,
-        hitTimer: 0,
-        xpValue: template.xp,
-      });
-    }
-  }
-
-  // --- Weapon Updates ---
-  private updateWeapons(dt: number) {
-    for (const w of this.weapons) {
-      w.timer -= dt;
-
-      switch (w.id) {
-        case "orbit":
-          this.updateOrbitWeapon(w, dt);
-          break;
-        case "burst":
-          if (w.timer <= 0) {
-            this.fireBurst(w);
-            w.timer = Math.max(0.5, w.cooldown - w.level * 0.2);
-          }
-          break;
-        case "lightning":
-          if (w.timer <= 0) {
-            this.fireLightning(w);
-            w.timer = Math.max(0.3, w.cooldown - w.level * 0.15);
-          }
-          break;
-        case "flame":
-          this.updateFlame(w, dt);
-          break;
-        case "nova":
-          if (w.timer <= 0) {
-            this.fireNova(w);
-            w.timer = Math.max(1.5, w.cooldown - w.level * 0.4);
-          }
-          break;
-        case "homing":
-          if (w.timer <= 0) {
-            this.fireHoming(w);
-            w.timer = Math.max(0.3, w.cooldown - w.level * 0.12);
-          }
-          break;
-      }
-    }
-  }
-
-  private updateOrbitWeapon(w: Weapon, dt: number) {
-    const p = this.player;
-    const count = w.level + 1;
-    const radius = 45 + w.level * 5;
-    const damage = 10 + w.level * 8;
-    const bladeSize = 8 + w.level * 2;
-
-    this.orbitAngle += dt * (3 + w.level * 0.5);
-
-    for (let i = 0; i < count; i++) {
-      const angle = this.orbitAngle + (Math.PI * 2 * i) / count;
-      const bx = p.x + Math.cos(angle) * radius;
-      const by = p.y + Math.sin(angle) * radius;
-
-      // Check collision with enemies
-      for (let j = this.enemies.length - 1; j >= 0; j--) {
-        const e = this.enemies[j];
-        const dx = bx - e.x;
-        const dy = by - e.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < bladeSize + e.size) {
-          if (e.hitTimer <= 0) {
-            e.hp -= damage;
-            e.hitTimer = 0.2;
-            this.spawnHitParticles(e.x, e.y, w.color, 3);
-          }
-        }
-      }
-    }
-  }
-
-  private fireBurst(w: Weapon) {
-    const count = 4 + w.level * 2;
-    const damage = 8 + w.level * 5;
-    for (let i = 0; i < count; i++) {
-      const angle = (Math.PI * 2 * i) / count;
-      this.projectiles.push({
-        x: this.player.x,
-        y: this.player.y,
-        vx: Math.cos(angle) * 200,
-        vy: Math.sin(angle) * 200,
-        damage,
-        lifetime: 1.5,
-        size: 4 + w.level,
-        color: w.color,
-        pierce: w.level >= 3 ? 2 : 1,
-        hitEnemies: new Set(),
-        weaponType: "burst",
-      });
-    }
-  }
-
-  private fireLightning(w: Weapon) {
-    const targets = w.level + 1;
-    const damage = 15 + w.level * 10;
-    const range = 150 + w.level * 30;
-
-    // Find nearest enemies
-    const sorted = [...this.enemies]
-      .map((e) => ({
-        e,
-        d: Math.hypot(e.x - this.player.x, e.y - this.player.y),
-      }))
-      .filter((x) => x.d < range)
-      .sort((a, b) => a.d - b.d)
-      .slice(0, targets);
-
-    for (const { e } of sorted) {
-      e.hp -= damage;
-      e.hitTimer = 0.15;
-      // Lightning visual as particle line
-      const steps = 5;
-      for (let i = 0; i < steps; i++) {
-        const t = i / steps;
-        this.particles.push({
-          x:
-            this.player.x +
-            (e.x - this.player.x) * t +
-            (Math.random() - 0.5) * 15,
-          y:
-            this.player.y +
-            (e.y - this.player.y) * t +
-            (Math.random() - 0.5) * 15,
-          vx: 0,
-          vy: 0,
-          life: 1,
-          maxLife: 0.3,
-          color: "#f1c40f",
-          size: 3 + Math.random() * 3,
-        });
-      }
-    }
-  }
-
-  private updateFlame(w: Weapon, dt: number) {
-    // Leave fire trail when dashing
-    if (this.player.dashDir) {
-      const damage = 5 + w.level * 4;
-      // Fire trail damages enemies near dash path
-      for (const e of this.enemies) {
-        const dx = e.x - this.player.x;
-        const dy = e.y - this.player.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 30 + w.level * 5) {
-          if (e.hitTimer <= 0) {
-            e.hp -= damage;
-            e.hitTimer = 0.1;
-          }
-        }
-      }
-    }
-  }
-
-  private fireNova(w: Weapon) {
-    const damage = 20 + w.level * 15;
-    const range = 100 + w.level * 25;
-
-    for (const e of this.enemies) {
-      const dist = Math.hypot(e.x - this.player.x, e.y - this.player.y);
-      if (dist < range) {
-        e.hp -= damage;
-        e.hitTimer = 0.2;
-        // Knockback
-        const nx = (e.x - this.player.x) / Math.max(dist, 1);
-        const ny = (e.y - this.player.y) / Math.max(dist, 1);
-        e.x += nx * 30;
-        e.y += ny * 30;
-      }
-    }
-
-    // Visual
-    for (let i = 0; i < 24; i++) {
-      const angle = (Math.PI * 2 * i) / 24;
-      this.particles.push({
-        x: this.player.x,
-        y: this.player.y,
-        vx: Math.cos(angle) * range * 3,
-        vy: Math.sin(angle) * range * 3,
-        life: 1,
-        maxLife: 0.4,
-        color: "#9b59b6",
-        size: 6,
-      });
-    }
-  }
-
-  private fireHoming(w: Weapon) {
-    const count = Math.min(w.level, 3);
-    const damage = 10 + w.level * 6;
-
-    for (let i = 0; i < count; i++) {
-      // Find a random nearby enemy
-      const nearby = this.enemies.filter(
-        (e) => Math.hypot(e.x - this.player.x, e.y - this.player.y) < 250,
-      );
-      if (nearby.length === 0) return;
-      const target = nearby[Math.floor(Math.random() * nearby.length)];
-      const dx = target.x - this.player.x;
-      const dy = target.y - this.player.y;
-      const dist = Math.max(Math.hypot(dx, dy), 1);
-
-      this.projectiles.push({
-        x: this.player.x,
-        y: this.player.y,
-        vx: (dx / dist) * 250,
-        vy: (dy / dist) * 250,
-        damage,
-        lifetime: 2,
-        size: 5,
-        color: "#1abc9c",
-        pierce: 1,
-        hitEnemies: new Set(),
-        weaponType: "homing",
-      });
-    }
-  }
-
-  // --- Particle Helpers ---
-  private spawnHitParticles(
-    x: number,
-    y: number,
-    color: string,
-    count: number,
-  ) {
-    for (let i = 0; i < count; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 50 + Math.random() * 100;
-      this.particles.push({
-        x,
-        y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        life: 1,
-        maxLife: 0.3 + Math.random() * 0.2,
-        color,
-        size: 2 + Math.random() * 3,
-      });
-    }
-  }
-
-  private spawnDeathParticles(x: number, y: number, color: string) {
-    for (let i = 0; i < 8; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 80 + Math.random() * 120;
-      this.particles.push({
-        x,
-        y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        life: 1,
-        maxLife: 0.4,
-        color,
-        size: 3 + Math.random() * 4,
-      });
-    }
-  }
-
-  // --- Main Update ---
-  private update(dt: number) {
-    if (this.paused || this.gameOver) return;
-
-    this.gameTime += dt;
-
-    // Wave progression
-    const newWave = 1 + Math.floor(this.gameTime / WAVE_INTERVAL);
-    if (newWave > this.wave) {
-      this.wave = newWave;
-    }
-
-    // Update player dash
-    this.updateDash(dt);
-
-    // Spawn enemies
-    this.spawnEnemies(dt);
-
-    // Update enemies
-    this.updateEnemies(dt);
-
-    // Update weapons
-    this.updateWeapons(dt);
-
-    // Update projectiles
-    this.updateProjectiles(dt);
-
-    // Update XP orbs
-    this.updateXpOrbs(dt);
-
-    // Update particles
-    this.updateParticles(dt);
-
-    // Update dash trails
-    this.updateDashTrails(dt);
-
-    // Player invincibility timer
-    if (this.player.invincibleTimer > 0) {
-      this.player.invincibleTimer -= dt;
-    }
-
-    // Check death
-    if (this.player.hp <= 0) {
-      this.gameOver = true;
-      this.emitState();
-    }
-  }
-
-  private updateDash(dt: number) {
-    const p = this.player;
-
-    if (p.dashCooldown > 0) {
-      p.dashCooldown -= dt;
-    }
-
-    if (p.dashDir) {
-      p.dashProgress += dt / DASH_DURATION;
-
-      if (p.dashProgress >= 1) {
-        // Dash complete
-        p.x = p.dashTarget.x;
-        p.y = p.dashTarget.y;
-        p.dashDir = null;
-        p.dashCooldown = DASH_COOLDOWN;
-      } else {
-        // Interpolate position
-        const t = this.easeOutQuad(p.dashProgress);
-        p.x = p.dashStart.x + (p.dashTarget.x - p.dashStart.x) * t;
-        p.y = p.dashStart.y + (p.dashTarget.y - p.dashStart.y) * t;
-
-        // Dash trail
-        this.dashTrails.push({
-          x: p.x,
-          y: p.y,
-          life: 1,
-          size: PLAYER_SIZE * 0.8,
-        });
-
-        // Dash damage to enemies
-        for (const e of this.enemies) {
-          const dist = Math.hypot(e.x - p.x, e.y - p.y);
-          if (dist < PLAYER_SIZE + e.size + 5) {
-            if (e.hitTimer <= 0) {
-              e.hp -= p.dashDamage;
-              e.hitTimer = 0.15;
-              // Knockback
-              const nx = (e.x - p.x) / Math.max(dist, 1);
-              const ny = (e.y - p.y) / Math.max(dist, 1);
-              e.x += nx * 20;
-              e.y += ny * 20;
-              this.spawnHitParticles(e.x, e.y, "#ffffff", 5);
-            }
-          }
-        }
-      }
-    }
-  }
-
-  private easeOutQuad(t: number): number {
-    return 1 - (1 - t) * (1 - t);
-  }
-
-  private updateEnemies(dt: number) {
-    const p = this.player;
-
-    for (let i = this.enemies.length - 1; i >= 0; i--) {
-      const e = this.enemies[i];
-
-      // Move toward player
-      const dx = p.x - e.x;
-      const dy = p.y - e.y;
-      const dist = Math.max(Math.hypot(dx, dy), 1);
-      e.x += (dx / dist) * e.speed * dt;
-      e.y += (dy / dist) * e.speed * dt;
-
-      // Hit timer
-      if (e.hitTimer > 0) e.hitTimer -= dt;
-
-      // Contact damage to player
-      if (dist < PLAYER_SIZE + e.size && p.invincibleTimer <= 0 && !p.dashDir) {
-        p.hp -= e.damage * dt;
-        if (e.hitTimer <= 0) {
-          this.spawnHitParticles(p.x, p.y, "#ff0000", 3);
-          e.hitTimer = 0.5;
-        }
-      }
-
-      // Dead check
-      if (e.hp <= 0) {
-        const color = ENEMY_TEMPLATES[e.type].color;
-        this.spawnDeathParticles(e.x, e.y, color);
-        // Drop XP
-        this.xpOrbs.push({ x: e.x, y: e.y, value: e.xpValue, magnet: false });
-        p.killCount++;
-        this.enemies.splice(i, 1);
-      }
-    }
-
-    // Limit enemy count
-    if (this.enemies.length > 200) {
-      // Remove furthest enemies
-      this.enemies.sort(
-        (a, b) =>
-          Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y),
-      );
-      this.enemies.length = 150;
-    }
-  }
-
-  private updateProjectiles(dt: number) {
-    for (let i = this.projectiles.length - 1; i >= 0; i--) {
-      const proj = this.projectiles[i];
-
-      // Homing projectiles adjust direction
-      if (proj.weaponType === "homing" && this.enemies.length > 0) {
-        let nearest: Enemy | null = null;
-        let nearestDist = Infinity;
-        for (const e of this.enemies) {
-          const d = Math.hypot(e.x - proj.x, e.y - proj.y);
-          if (d < nearestDist) {
-            nearestDist = d;
-            nearest = e;
-          }
-        }
-        if (nearest && nearestDist < 200) {
-          const dx = nearest.x - proj.x;
-          const dy = nearest.y - proj.y;
-          const d = Math.max(Math.hypot(dx, dy), 1);
-          const speed = Math.hypot(proj.vx, proj.vy);
-          proj.vx += (dx / d) * 500 * dt;
-          proj.vy += (dy / d) * 500 * dt;
-          // Normalize to speed
-          const currentSpeed = Math.hypot(proj.vx, proj.vy);
-          proj.vx = (proj.vx / currentSpeed) * speed;
-          proj.vy = (proj.vy / currentSpeed) * speed;
-        }
-      }
-
-      proj.x += proj.vx * dt;
-      proj.y += proj.vy * dt;
-      proj.lifetime -= dt;
-
-      if (proj.lifetime <= 0) {
-        this.projectiles.splice(i, 1);
-        continue;
-      }
-
-      // Check enemy collisions
-      for (let j = this.enemies.length - 1; j >= 0; j--) {
-        const e = this.enemies[j];
-        if (proj.hitEnemies.has(j)) continue;
-        const dist = Math.hypot(e.x - proj.x, e.y - proj.y);
-        if (dist < proj.size + e.size) {
-          e.hp -= proj.damage;
-          e.hitTimer = 0.1;
-          proj.hitEnemies.add(j);
-          this.spawnHitParticles(e.x, e.y, proj.color, 3);
-          proj.pierce--;
-          if (proj.pierce <= 0) {
-            this.projectiles.splice(i, 1);
-            break;
-          }
-        }
-      }
-    }
-  }
-
-  private updateXpOrbs(dt: number) {
-    const p = this.player;
-
-    for (let i = this.xpOrbs.length - 1; i >= 0; i--) {
-      const orb = this.xpOrbs[i];
-
-      // Magnet
-      const dist = Math.hypot(orb.x - p.x, orb.y - p.y);
-      if (dist < p.magnetRange || orb.magnet) {
-        orb.magnet = true;
-        const speed = 300;
-        const dx = p.x - orb.x;
-        const dy = p.y - orb.y;
-        const d = Math.max(dist, 1);
-        orb.x += (dx / d) * speed * dt;
-        orb.y += (dy / d) * speed * dt;
-      }
-
-      // Collect
-      if (dist < 15) {
-        p.xp += orb.value;
-        this.xpOrbs.splice(i, 1);
-
-        // Level up check
-        while (p.xp >= p.xpToNext) {
-          p.xp -= p.xpToNext;
-          p.level++;
-          p.xpToNext = Math.floor(XP_BASE * Math.pow(1.2, p.level - 1));
-          this.pendingLevelUps++;
-        }
-
-        if (this.pendingLevelUps > 0 && !this.upgradeChoices) {
-          this.paused = true;
-          this.upgradeChoices = this.generateUpgrades();
-          this.emitState();
-        }
-      }
-    }
-
-    // Limit orbs
-    if (this.xpOrbs.length > 300) {
-      this.xpOrbs.splice(0, this.xpOrbs.length - 200);
-    }
-  }
-
-  private updateParticles(dt: number) {
-    for (let i = this.particles.length - 1; i >= 0; i--) {
-      const p = this.particles[i];
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
-      p.vx *= 0.95;
-      p.vy *= 0.95;
-      p.life -= dt / p.maxLife;
-      if (p.life <= 0) this.particles.splice(i, 1);
-    }
-  }
-
-  private updateDashTrails(dt: number) {
-    for (let i = this.dashTrails.length - 1; i >= 0; i--) {
-      this.dashTrails[i].life -= dt * 4;
-      if (this.dashTrails[i].life <= 0) this.dashTrails.splice(i, 1);
-    }
-  }
-
-  // --- Rendering ---
-  private render() {
-    const ctx = this.ctx;
-    const p = this.player;
-
-    // Camera follows player
-    this.camera.x = p.x - W / 2;
-    this.camera.y = p.y - H / 2;
-
-    ctx.save();
-    ctx.translate(-this.camera.x, -this.camera.y);
-
-    // Background
-    this.renderBackground(ctx);
-
-    // XP orbs
-    for (const orb of this.xpOrbs) {
-      ctx.fillStyle = "#2ecc71";
-      ctx.globalAlpha = 0.8;
-      ctx.beginPath();
-      ctx.arc(orb.x, orb.y, 4 + orb.value, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-    }
-
-    // Dash trails
-    for (const trail of this.dashTrails) {
-      ctx.globalAlpha = trail.life * 0.5;
-      ctx.fillStyle = "#3498db";
-      ctx.beginPath();
-      ctx.arc(trail.x, trail.y, trail.size * trail.life, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.globalAlpha = 1;
-
-    // Enemies
-    for (const e of this.enemies) {
-      const color = ENEMY_TEMPLATES[e.type].color;
-      ctx.fillStyle = e.hitTimer > 0 ? "#ffffff" : color;
-
-      ctx.beginPath();
-      ctx.arc(e.x, e.y, e.size, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Boss HP bar
-      if (e.type === "boss") {
-        const barW = e.size * 2;
-        const barH = 4;
-        ctx.fillStyle = "#333";
-        ctx.fillRect(e.x - barW / 2, e.y - e.size - 10, barW, barH);
-        ctx.fillStyle = "#e74c3c";
-        ctx.fillRect(
-          e.x - barW / 2,
-          e.y - e.size - 10,
-          barW * (e.hp / e.maxHp),
-          barH,
-        );
-      }
-    }
-
-    // Projectiles
-    for (const proj of this.projectiles) {
-      ctx.fillStyle = proj.color;
-      ctx.beginPath();
-      ctx.arc(proj.x, proj.y, proj.size, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // Orbit weapon visuals
-    const orbitW = this.weapons.find((w) => w.id === "orbit");
-    if (orbitW) {
-      const count = orbitW.level + 1;
-      const radius = 45 + orbitW.level * 5;
-      const bladeSize = 8 + orbitW.level * 2;
-      for (let i = 0; i < count; i++) {
-        const angle = this.orbitAngle + (Math.PI * 2 * i) / count;
-        const bx = p.x + Math.cos(angle) * radius;
-        const by = p.y + Math.sin(angle) * radius;
-        ctx.fillStyle = "#3498db";
-        ctx.beginPath();
-        ctx.arc(bx, by, bladeSize, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "rgba(52,152,219,0.3)";
-        ctx.beginPath();
-        ctx.arc(bx, by, bladeSize + 3, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-
-    // Player
-    const isDashing = !!p.dashDir;
-    ctx.fillStyle = isDashing ? "#ffffff" : "#3498db";
-    if (p.invincibleTimer > 0 && !isDashing) {
-      ctx.globalAlpha = 0.5 + Math.sin(Date.now() * 0.02) * 0.3;
-    }
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, PLAYER_SIZE, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Player inner
-    ctx.fillStyle = isDashing ? "#3498db" : "#2980b9";
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, PLAYER_SIZE * 0.6, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = 1;
-
-    // Direction indicator when dashing
-    if (isDashing && p.dashDir) {
-      ctx.strokeStyle = "rgba(255,255,255,0.8)";
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(p.x, p.y);
-      ctx.lineTo(p.x + p.dashDir.x * 25, p.y + p.dashDir.y * 25);
-      ctx.stroke();
-    }
-
-    // Particles
-    for (const part of this.particles) {
-      ctx.globalAlpha = Math.max(0, part.life);
-      ctx.fillStyle = part.color;
-      ctx.beginPath();
-      ctx.arc(
-        part.x,
-        part.y,
-        part.size * Math.max(0, part.life),
-        0,
-        Math.PI * 2,
-      );
-      ctx.fill();
-    }
-    ctx.globalAlpha = 1;
-
-    ctx.restore();
-
-    // --- HUD (screen space) ---
-    this.renderHUD(ctx);
-  }
-
-  private renderBackground(ctx: CanvasRenderingContext2D) {
-    // Dark background with grid
-    const cx = this.camera.x;
-    const cy = this.camera.y;
-
-    ctx.fillStyle = "#0a0a1a";
-    ctx.fillRect(cx, cy, W, H);
-
-    // Grid
-    ctx.strokeStyle = "rgba(255,255,255,0.04)";
-    ctx.lineWidth = 1;
-    const gridSize = 50;
-    const startX = Math.floor(cx / gridSize) * gridSize;
-    const startY = Math.floor(cy / gridSize) * gridSize;
-
-    for (let x = startX; x < cx + W + gridSize; x += gridSize) {
-      ctx.beginPath();
-      ctx.moveTo(x, cy);
-      ctx.lineTo(x, cy + H);
-      ctx.stroke();
-    }
-    for (let y = startY; y < cy + H + gridSize; y += gridSize) {
-      ctx.beginPath();
-      ctx.moveTo(cx, y);
-      ctx.lineTo(cx + W, y);
-      ctx.stroke();
-    }
-  }
-
-  private renderHUD(ctx: CanvasRenderingContext2D) {
-    const p = this.player;
-
-    // HP bar
-    const hpBarW = W - 40;
-    const hpBarH = 10;
-    const hpBarX = 20;
-    const hpBarY = 15;
-    ctx.fillStyle = "rgba(0,0,0,0.5)";
-    ctx.fillRect(hpBarX - 2, hpBarY - 2, hpBarW + 4, hpBarH + 4);
-    ctx.fillStyle = "#333";
-    ctx.fillRect(hpBarX, hpBarY, hpBarW, hpBarH);
-    const hpRatio = Math.max(0, p.hp / p.maxHp);
-    ctx.fillStyle =
-      hpRatio > 0.5 ? "#2ecc71" : hpRatio > 0.25 ? "#f39c12" : "#e74c3c";
-    ctx.fillRect(hpBarX, hpBarY, hpBarW * hpRatio, hpBarH);
-
-    // XP bar
-    const xpBarY = hpBarY + hpBarH + 4;
-    const xpBarH = 6;
-    ctx.fillStyle = "#222";
-    ctx.fillRect(hpBarX, xpBarY, hpBarW, xpBarH);
-    ctx.fillStyle = "#9b59b6";
-    ctx.fillRect(hpBarX, xpBarY, hpBarW * (p.xp / p.xpToNext), xpBarH);
-
-    // Level & Time
-    ctx.fillStyle = "#fff";
-    ctx.font = "bold 14px sans-serif";
-    ctx.textAlign = "left";
-    ctx.fillText(`Lv.${p.level}`, 20, xpBarY + xpBarH + 16);
-
-    ctx.textAlign = "right";
-    const mins = Math.floor(this.gameTime / 60);
-    const secs = Math.floor(this.gameTime % 60);
-    ctx.fillText(
-      `${mins}:${secs.toString().padStart(2, "0")}`,
-      W - 20,
-      xpBarY + xpBarH + 16,
-    );
-
-    ctx.textAlign = "center";
-    ctx.fillText(`Wave ${this.wave}`, W / 2, xpBarY + xpBarH + 16);
-
-    // Kill count
-    ctx.textAlign = "left";
-    ctx.font = "12px sans-serif";
-    ctx.fillStyle = "rgba(255,255,255,0.5)";
-    ctx.fillText(`Kill: ${p.killCount}`, 20, xpBarY + xpBarH + 32);
-
-    // Weapon icons
-    ctx.textAlign = "right";
-    let iconX = W - 20;
-    for (const w of this.weapons) {
-      ctx.font = "16px sans-serif";
-      ctx.fillText(w.icon, iconX, xpBarY + xpBarH + 34);
-      ctx.font = "9px sans-serif";
-      ctx.fillStyle = "#fff";
-      ctx.fillText(`${w.level}`, iconX + 2, xpBarY + xpBarH + 44);
-      ctx.fillStyle = "rgba(255,255,255,0.5)";
-      iconX -= 28;
-    }
-
-    // Upgrade selection UI
-    if (this.upgradeChoices) {
-      this.renderUpgradeUI(ctx);
-    }
-
-    // Game over
+  handleTap(x: number, y: number) {
     if (this.gameOver) {
-      this.renderGameOver(ctx);
-    }
-  }
-
-  private renderUpgradeUI(ctx: CanvasRenderingContext2D) {
-    if (!this.upgradeChoices) return;
-
-    ctx.fillStyle = "rgba(0,0,0,0.7)";
-    ctx.fillRect(0, 0, W, H);
-
-    ctx.fillStyle = "#fff";
-    ctx.font = "bold 22px sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText("LEVEL UP!", W / 2, 180);
-    ctx.font = "14px sans-serif";
-    ctx.fillText("選べ", W / 2, 205);
-
-    const cardW = W - 60;
-    const cardH = 80;
-    const startY = 230;
-    const gap = 15;
-
-    for (let i = 0; i < this.upgradeChoices.length; i++) {
-      const up = this.upgradeChoices[i];
-      const y = startY + i * (cardH + gap);
-
-      // Card bg
-      ctx.fillStyle = "rgba(52,73,94,0.9)";
-      ctx.beginPath();
-      ctx.roundRect(30, y, cardW, cardH, 12);
-      ctx.fill();
-
-      // Border
-      ctx.strokeStyle = "rgba(255,255,255,0.2)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.roundRect(30, y, cardW, cardH, 12);
-      ctx.stroke();
-
-      // Icon
-      ctx.font = "30px sans-serif";
-      ctx.textAlign = "left";
-      ctx.fillText(up.icon, 50, y + 50);
-
-      // Name
-      ctx.font = "bold 16px sans-serif";
-      ctx.fillStyle = "#fff";
-      ctx.fillText(up.name, 95, y + 35);
-
-      // Description
-      ctx.font = "13px sans-serif";
-      ctx.fillStyle = "rgba(255,255,255,0.7)";
-      ctx.fillText(up.description, 95, y + 58);
-    }
-  }
-
-  private renderGameOver(ctx: CanvasRenderingContext2D) {
-    ctx.fillStyle = "rgba(0,0,0,0.8)";
-    ctx.fillRect(0, 0, W, H);
-
-    ctx.fillStyle = "#e74c3c";
-    ctx.font = "bold 36px sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText("GAME OVER", W / 2, H / 2 - 80);
-
-    ctx.fillStyle = "#fff";
-    ctx.font = "20px sans-serif";
-    const mins = Math.floor(this.gameTime / 60);
-    const secs = Math.floor(this.gameTime % 60);
-    ctx.fillText(
-      `生存時間: ${mins}:${secs.toString().padStart(2, "0")}`,
-      W / 2,
-      H / 2 - 30,
-    );
-    ctx.fillText(
-      `Lv.${this.player.level}  Kill: ${this.player.killCount}`,
-      W / 2,
-      H / 2 + 5,
-    );
-    ctx.fillText(`Wave ${this.wave}`, W / 2, H / 2 + 35);
-
-    // Restart button
-    ctx.fillStyle = "#3498db";
-    ctx.beginPath();
-    ctx.roundRect(W / 2 - 80, H / 2 + 60, 160, 50, 12);
-    ctx.fill();
-    ctx.fillStyle = "#fff";
-    ctx.font = "bold 18px sans-serif";
-    ctx.fillText("もう1回", W / 2, H / 2 + 90);
-  }
-
-  // --- Handle clicks on upgrade cards / game over ---
-  handleTap(canvasX: number, canvasY: number) {
-    if (this.gameOver) {
-      // Restart button
       if (
-        canvasX > W / 2 - 80 &&
-        canvasX < W / 2 + 80 &&
-        canvasY > H / 2 + 60 &&
-        canvasY < H / 2 + 110
+        x >= RESTART_BUTTON.x &&
+        x <= RESTART_BUTTON.x + RESTART_BUTTON.width &&
+        y >= RESTART_BUTTON.y &&
+        y <= RESTART_BUTTON.y + RESTART_BUTTON.height
       ) {
         this.restart();
         return true;
       }
       return false;
     }
-
-    if (this.upgradeChoices) {
-      const cardW = W - 60;
-      const cardH = 80;
-      const startY = 230;
-      const gap = 15;
-
-      for (let i = 0; i < this.upgradeChoices.length; i++) {
-        const y = startY + i * (cardH + gap);
+    if (this.upgrades && this.upgradeGuard <= 0) {
+      if (
+        x >= REROLL_BUTTON.x &&
+        x <= REROLL_BUTTON.x + REROLL_BUTTON.width &&
+        y >= REROLL_BUTTON.y &&
+        y <= REROLL_BUTTON.y + REROLL_BUTTON.height
+      ) {
+        this.rerollUpgrades();
+        return true;
+      }
+      for (let i = 0; i < this.upgrades.length; i += 1) {
+        const top =
+          UPGRADE_CARD.y + i * (UPGRADE_CARD.height + UPGRADE_CARD.gap);
         if (
-          canvasX >= 30 &&
-          canvasX <= 30 + cardW &&
-          canvasY >= y &&
-          canvasY <= y + cardH
+          x >= UPGRADE_CARD.x &&
+          x <= UPGRADE_CARD.x + UPGRADE_CARD.width &&
+          y >= top &&
+          y <= top + UPGRADE_CARD.height
         ) {
-          this.selectUpgrade(i);
+          this.pickUpgrade(i);
           return true;
         }
       }
-      return false;
     }
-
     return false;
   }
 
-  restart() {
-    this.player = {
+  private makePlayer(): Player {
+    return {
       x: 0,
       y: 0,
-      hp: 100,
-      maxHp: 100,
-      dashDir: null,
-      dashProgress: 0,
-      dashStart: { x: 0, y: 0 },
-      dashTarget: { x: 0, y: 0 },
-      dashCooldown: 0,
-      dashSpeed: 1,
-      dashDamage: BASE_DASH_DAMAGE,
-      dashDistance: BASE_DASH_DISTANCE,
-      invincibleTimer: 0,
-      xp: 0,
-      xpToNext: XP_BASE,
+      hp: 120,
+      maxHp: 120,
       level: 1,
+      xp: 0,
+      xpToNext: BASE_XP,
       killCount: 0,
-      magnetRange: 60,
+      invulnerable: 0,
+      dashCooldown: 0,
+      dashDamage: 38,
+      dashDistance: 138,
+      magnetRadius: 72,
+      shurikenCount: 2,
+      shurikenDamage: 12,
+      shurikenRadius: 54,
+      rerolls: 2,
     };
-    this.enemies = [];
-    this.xpOrbs = [];
-    this.projectiles = [];
-    this.particles = [];
-    this.dashTrails = [];
-    this.weapons = [];
-    this.gameTime = 0;
-    this.wave = 1;
-    this.spawnTimer = 0;
-    this.gameOver = false;
-    this.paused = false;
-    this.upgradeChoices = null;
-    this.pendingLevelUps = 0;
-    this.orbitAngle = 0;
-
-    this.addWeapon("orbit");
-    this.emitState();
   }
 
-  // --- Game Loop ---
-  private gameLoop(time: number) {
-    if (this.destroyed) return;
-
-    const dt = this.lastTime
-      ? Math.min((time - this.lastTime) / 1000, 0.05)
-      : 1 / 60;
-    this.lastTime = time;
-
+  private loop(t: number) {
+    if (this.dead) return;
+    const dt = this.last ? Math.min((t - this.last) / 1000, 0.05) : 1 / 60;
+    this.last = t;
     this.update(dt);
     this.render();
-
-    this.animFrame = requestAnimationFrame((t) => this.gameLoop(t));
+    this.frame = requestAnimationFrame((n) => this.loop(n));
   }
 
-  start() {
-    this.animFrame = requestAnimationFrame((t) => this.gameLoop(t));
+  private update(dt: number) {
+    this.audio.setIntensity(
+      clamp(
+        (this.enemies.length / 42 +
+          this.wave / 12 +
+          (this.hasBoss() ? 0.55 : 0)) /
+          2,
+        0,
+        1,
+      ),
+    );
+    this.bossWarning = Math.max(0, this.bossWarning - dt);
+    if (!this.gameOver) this.hintTimer = Math.max(0, this.hintTimer - dt);
+    this.updateFx(dt);
+    if (this.gameOver) return;
+    if (this.paused) {
+      this.upgradeGuard = Math.max(0, this.upgradeGuard - dt);
+      return;
+    }
+    this.freeze = Math.max(0, this.freeze - dt);
+    const sdt = this.freeze > 0 ? dt * 0.22 : dt;
+    this.time += sdt;
+    this.wave = 1 + Math.floor(this.time / WAVE_SECONDS);
+    this.player.invulnerable = Math.max(0, this.player.invulnerable - sdt);
+    this.player.dashCooldown = Math.max(0, this.player.dashCooldown - sdt);
+    this.updateDash(sdt);
+    this.updateShuriken(sdt);
+    this.updateSkills(sdt);
+    this.updateProjectiles(sdt);
+    this.updateFlames(sdt);
+    this.updateEnemies(sdt);
+    this.updateOrbs(sdt);
+    this.spawn(sdt);
+    this.maybeBoss();
+    if (this.player.hp <= 0) {
+      this.player.hp = 0;
+      this.gameOver = true;
+      this.audio.playGameOver();
+    }
   }
 
-  destroy() {
-    this.destroyed = true;
-    cancelAnimationFrame(this.animFrame);
+  private updateDash(dt: number) {
+    if (!this.dash) return;
+    const prev = { x: this.player.x, y: this.player.y };
+    this.dash.progress = clamp(this.dash.progress + dt / DASH_DURATION, 0, 1);
+    const eased = 1 - (1 - this.dash.progress) ** 3;
+    this.player.x = lerp(this.dash.from.x, this.dash.to.x, eased);
+    this.player.y = lerp(this.dash.from.y, this.dash.to.y, eased);
+    this.player.invulnerable = Math.max(this.player.invulnerable, 0.08);
+    this.afterimages.push({
+      id: this.next(),
+      x: this.player.x,
+      y: this.player.y,
+      angle: Math.atan2(this.dash.dir.y, this.dash.dir.x),
+      life: 0.16,
+      maxLife: 0.16,
+    });
+    this.slashes.push({
+      id: this.next(),
+      x: this.player.x - this.dash.dir.x * 18,
+      y: this.player.y - this.dash.dir.y * 18,
+      angle: Math.atan2(this.dash.dir.y, this.dash.dir.x),
+      radius: 20 + Math.random() * 8,
+      span: 0.55,
+      color: "rgba(207,46,47,0.85)",
+      life: 0.12,
+      maxLife: 0.12,
+    });
+    const fireLv = this.skillLevel("fire");
+    if (fireLv > 0) {
+      this.fireTrailTimer -= dt;
+      if (this.fireTrailTimer <= 0) {
+        this.flames.push({
+          id: this.next(),
+          x: this.player.x,
+          y: this.player.y,
+          radius: 16 + fireLv * 3,
+          damage: 6 + fireLv * 3.5,
+          life: 0.62 + fireLv * 0.08,
+          maxLife: 0.62 + fireLv * 0.08,
+          tick: 0.04,
+        });
+        this.fireTrailTimer = 0.022;
+      }
+    }
+    for (const e of this.enemies) {
+      if (
+        this.dash.hits.has(e.id) ||
+        segDist(e, prev, this.player) > e.radius + PLAYER_RADIUS + 8
+      )
+        continue;
+      this.dash.hits.add(e.id);
+      e.hp -= this.player.dashDamage + this.player.level * 2.2;
+      e.hit = 0.16;
+      const push = norm({ x: e.x - this.player.x, y: e.y - this.player.y });
+      e.vx += push.x * 120;
+      e.vy += push.y * 120;
+      this.trauma = Math.min(1, this.trauma + 0.08);
+      this.freeze = Math.max(this.freeze, 0.03);
+      this.screenFlash = Math.max(this.screenFlash, 0.08);
+      this.shockwaves.push({
+        id: this.next(),
+        x: e.x,
+        y: e.y,
+        radius: 18,
+        growth: 120,
+        color: "rgba(255,246,234,0.75)",
+        life: 0.18,
+        maxLife: 0.18,
+      });
+      this.impact(e.x, e.y, "#fff6ea", 5, 140);
+    }
+    if (this.dash.progress >= 1) {
+      if (fireLv > 0) {
+        this.audio.playSkill("fire");
+        for (let i = 0; i < 4 + fireLv; i += 1) {
+          const a = (Math.PI * 2 * i) / (4 + fireLv);
+          this.flames.push({
+            id: this.next(),
+            x: this.player.x + Math.cos(a) * 14,
+            y: this.player.y + Math.sin(a) * 14,
+            radius: 16 + fireLv * 3,
+            damage: 6 + fireLv * 3.5,
+            life: 0.62 + fireLv * 0.08,
+            maxLife: 0.62 + fireLv * 0.08,
+            tick: 0.04,
+          });
+        }
+      }
+      this.dash = null;
+      this.player.dashCooldown = DASH_COOLDOWN;
+      this.fireTrailTimer = 0;
+    }
   }
 
-  private emitState() {
-    if (this.onStateChange) this.onStateChange();
+  private updateShuriken(dt: number) {
+    this.shurikenAngle += dt * (3.1 + this.player.shurikenCount * 0.12);
+    for (const e of this.enemies) e.orbit = Math.max(0, e.orbit - dt);
+    for (let i = 0; i < this.player.shurikenCount; i += 1) {
+      const a =
+        this.shurikenAngle + (Math.PI * 2 * i) / this.player.shurikenCount;
+      const p = {
+        x: this.player.x + Math.cos(a) * this.player.shurikenRadius,
+        y: this.player.y + Math.sin(a) * this.player.shurikenRadius,
+      };
+      for (const e of this.enemies) {
+        if (e.orbit > 0 || dist(p, e) > e.radius + 10) continue;
+        e.hp -= this.player.shurikenDamage;
+        e.hit = 0.1;
+        e.orbit = 0.14;
+        e.vx += Math.cos(a) * 36;
+        e.vy += Math.sin(a) * 36;
+        this.impact(e.x, e.y, "#f7f3e8", 3, 88);
+        this.audio.playOrbitHit();
+      }
+    }
   }
 
-  getWidth() {
-    return W;
+  private updateSkills(dt: number) {
+    for (const s of this.skills) {
+      if (s.key === "fire") continue;
+      s.timer -= dt;
+      if (s.timer > 0) continue;
+      if (s.key === "lightning") this.castLightning(s.level);
+      if (s.key === "shadow") this.castShadow(s.level);
+      if (s.key === "wind") this.castWind(s.level);
+      if (s.key === "kunai") this.castKunai(s.level);
+      s.timer = this.skillCooldown(s.key, s.level);
+    }
   }
-  getHeight() {
-    return H;
+
+  private castLightning(level: number) {
+    const targets = this.enemies
+      .map((e) => ({ e, d: dist(e, this.player) }))
+      .filter((x) => x.d <= 220 + level * 32)
+      .sort((a, b) => a.d - b.d)
+      .slice(0, 1 + level);
+    if (!targets.length) return;
+    this.audio.playSkill("lightning");
+    this.screenFlash = Math.max(this.screenFlash, 0.16);
+    for (const { e } of targets) {
+      e.hp -= 20 + level * 14;
+      e.hit = 0.14;
+      const points: V[] = [this.player];
+      for (let i = 1; i < 4; i += 1) {
+        const t = i / 4;
+        const wave = (Math.random() - 0.5) * 26;
+        points.push({
+          x: lerp(this.player.x, e.x, t) + wave,
+          y: lerp(this.player.y, e.y, t) - wave * 0.35,
+        });
+      }
+      points.push({ x: e.x, y: e.y });
+      this.bolts.push({ id: this.next(), points, life: 0.18, maxLife: 0.18 });
+      this.shockwaves.push({
+        id: this.next(),
+        x: e.x,
+        y: e.y,
+        radius: 12,
+        growth: 130,
+        color: "rgba(245,213,126,0.85)",
+        life: 0.16,
+        maxLife: 0.16,
+      });
+      this.impact(e.x, e.y, "#f5d57e", 4, 120);
+    }
+  }
+
+  private castShadow(level: number) {
+    if (!this.enemies.length) return;
+    this.audio.playSkill("shadow");
+    const slashes = 1 + Math.floor((level + 1) / 2);
+    for (let i = 0; i < slashes; i += 1) {
+      const t = this.enemies[Math.floor(Math.random() * this.enemies.length)];
+      const a = Math.random() * Math.PI * 2;
+      const reach = 86 + level * 18;
+      const start = {
+        x: t.x - Math.cos(a) * reach,
+        y: t.y - Math.sin(a) * reach,
+      };
+      const end = {
+        x: t.x + Math.cos(a) * reach,
+        y: t.y + Math.sin(a) * reach,
+      };
+      this.slashes.push({
+        id: this.next(),
+        x: t.x,
+        y: t.y,
+        angle: a,
+        radius: reach * 0.6,
+        span: 0.9,
+        color: "rgba(163,155,189,0.82)",
+        life: 0.24,
+        maxLife: 0.24,
+      });
+      for (const e of this.enemies)
+        if (segDist(e, start, end) <= e.radius + 12) {
+          e.hp -= 28 + level * 18;
+          e.hit = 0.16;
+        }
+      this.impact(t.x, t.y, "#b0a3ce", 6, 150);
+    }
+  }
+
+  private castWind(level: number) {
+    if (!this.enemies.length) return;
+    this.audio.playSkill("wind");
+    const targets = this.enemies
+      .map((e) => ({ e, d: dist(e, this.player) }))
+      .sort((a, b) => a.d - b.d)
+      .slice(0, 1 + Math.ceil(level / 2));
+    targets.forEach(({ e }, i) => {
+      const dir = norm({ x: e.x - this.player.x, y: e.y - this.player.y });
+      const fan = (i - (targets.length - 1) / 2) * 0.18;
+      const rotated = {
+        x: dir.x * Math.cos(fan) - dir.y * Math.sin(fan),
+        y: dir.x * Math.sin(fan) + dir.y * Math.cos(fan),
+      };
+      this.projectiles.push({
+        id: this.next(),
+        kind: "wind",
+        x: this.player.x + rotated.x * 18,
+        y: this.player.y + rotated.y * 18,
+        vx: rotated.x * 260,
+        vy: rotated.y * 260,
+        radius: 7,
+        damage: 14 + level * 7,
+        life: 1.5,
+        maxLife: 1.5,
+        pierce: 1 + Math.floor(level / 3),
+        homing: 250 + level * 80,
+        color: "#87ddd9",
+        hits: new Set<number>(),
+      });
+    });
+  }
+
+  private castKunai(level: number) {
+    const target = this.closest(this.player);
+    if (!target) return;
+    this.audio.playSkill("kunai");
+    const shots = 2 + level;
+    const spread = Math.min(0.7, 0.18 + shots * 0.05);
+    const base = Math.atan2(target.y - this.player.y, target.x - this.player.x);
+    for (let i = 0; i < shots; i += 1) {
+      const t = shots === 1 ? 0.5 : i / (shots - 1);
+      const a = base + lerp(-spread, spread, t);
+      this.projectiles.push({
+        id: this.next(),
+        kind: "kunai",
+        x: this.player.x + Math.cos(a) * 14,
+        y: this.player.y + Math.sin(a) * 14,
+        vx: Math.cos(a) * 340,
+        vy: Math.sin(a) * 340,
+        radius: 6,
+        damage: 18 + level * 7,
+        life: 1.05,
+        maxLife: 1.05,
+        pierce: level >= 4 ? 2 : 1,
+        homing: 0,
+        color: "#f5efe3",
+        hits: new Set<number>(),
+      });
+    }
+  }
+
+  private updateProjectiles(dt: number) {
+    for (let i = this.projectiles.length - 1; i >= 0; i -= 1) {
+      const p = this.projectiles[i];
+      if (p.kind === "wind") {
+        const t = this.closest(p);
+        if (t) {
+          const dir = norm({ x: t.x - p.x, y: t.y - p.y });
+          p.vx += dir.x * p.homing * dt;
+          p.vy += dir.y * p.homing * dt;
+          const speed = Math.hypot(p.vx, p.vy) || 1;
+          const keep = 250 + p.homing * 0.08;
+          p.vx = (p.vx / speed) * keep;
+          p.vy = (p.vy / speed) * keep;
+        }
+      }
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.life -= dt;
+      if (p.life <= 0) {
+        this.projectiles.splice(i, 1);
+        continue;
+      }
+      for (const e of this.enemies) {
+        if (p.hits.has(e.id) || dist(p, e) > p.radius + e.radius) continue;
+        p.hits.add(e.id);
+        e.hp -= p.damage;
+        e.hit = 0.14;
+        this.impact(e.x, e.y, p.color, 4, 110);
+        p.pierce -= 1;
+        if (p.pierce <= 0) {
+          this.projectiles.splice(i, 1);
+          break;
+        }
+      }
+    }
+  }
+
+  private updateFlames(dt: number) {
+    for (let i = this.flames.length - 1; i >= 0; i -= 1) {
+      const f = this.flames[i];
+      f.life -= dt;
+      f.tick -= dt;
+      if (f.tick <= 0) {
+        f.tick = 0.09;
+        for (const e of this.enemies)
+          if (dist(f, e) <= f.radius + e.radius) {
+            e.hp -= f.damage;
+            e.hit = 0.06;
+          }
+      }
+      if (f.life <= 0) this.flames.splice(i, 1);
+    }
+  }
+
+  private updateEnemies(dt: number) {
+    for (let i = this.enemies.length - 1; i >= 0; i -= 1) {
+      const e = this.enemies[i];
+      e.hit = Math.max(0, e.hit - dt);
+      const toPlayer = { x: this.player.x - e.x, y: this.player.y - e.y };
+      const d = Math.max(1, Math.hypot(toPlayer.x, toPlayer.y));
+      const dir = { x: toPlayer.x / d, y: toPlayer.y / d };
+      const side = { x: -dir.y, y: dir.x };
+      let move = { x: dir.x, y: dir.y };
+      if (e.kind === "kappa") {
+        const sway = Math.sin(this.time * 6 + e.seed) * 0.55;
+        move.x += side.x * sway;
+        move.y += side.y * sway;
+      } else if (e.kind === "tengu") {
+        const bias = d < 160 ? -0.8 : 0.6;
+        const sway = Math.sin(this.time * 3 + e.seed) * 0.4;
+        move.x += dir.x * bias + side.x * sway;
+        move.y += dir.y * bias + side.y * sway;
+      } else if (e.kind === "yurei") {
+        const drift = Math.sin(this.time * 2.8 + e.seed) * 0.3;
+        move.x += side.x * drift;
+        move.y += side.y * drift;
+      }
+      move = norm(move);
+      e.vx = lerp(e.vx, move.x * e.speed, dt * 4);
+      e.vy = lerp(e.vy, move.y * e.speed, dt * 4);
+      e.x += e.vx * dt;
+      e.y += e.vy * dt;
+      if (
+        !this.dash &&
+        this.player.invulnerable <= 0 &&
+        d <= e.radius + PLAYER_RADIUS
+      ) {
+        this.player.hp -= e.damage * dt;
+        this.trauma = Math.min(1, this.trauma + 0.03);
+        if (Math.random() < 0.12)
+          this.impact(this.player.x, this.player.y, "#ff8a7c", 2, 65);
+      }
+      if (e.hp <= 0) this.killEnemy(i);
+    }
+    if (this.enemies.length > MAX_ENEMIES) {
+      this.enemies.sort((a, b) => dist(a, this.player) - dist(b, this.player));
+      this.enemies.length = MAX_ENEMIES;
+    }
+  }
+
+  private killEnemy(i: number) {
+    const e = this.enemies[i];
+    this.enemies.splice(i, 1);
+    this.player.killCount += 1;
+    this.trauma = Math.min(1, this.trauma + (e.kind === "boss" ? 0.24 : 0.08));
+    this.screenFlash = Math.max(
+      this.screenFlash,
+      e.kind === "boss" ? 0.22 : 0.06,
+    );
+    this.shockwaves.push({
+      id: this.next(),
+      x: e.x,
+      y: e.y,
+      radius: e.kind === "boss" ? 28 : 14,
+      growth: e.kind === "boss" ? 220 : 140,
+      color: e.kind === "boss" ? "rgba(226,71,62,0.9)" : "rgba(216,180,94,0.7)",
+      life: e.kind === "boss" ? 0.32 : 0.2,
+      maxLife: e.kind === "boss" ? 0.32 : 0.2,
+    });
+    this.impact(
+      e.x,
+      e.y,
+      e.primary,
+      e.kind === "boss" ? 18 : 10,
+      e.kind === "boss" ? 230 : 160,
+    );
+    let xp = e.xp;
+    while (xp > 0) {
+      const value = xp >= 6 ? 3 : xp >= 3 ? 2 : 1;
+      xp -= value;
+      const a = Math.random() * Math.PI * 2;
+      const r = Math.random() * 16;
+      this.orbs.push({
+        id: this.next(),
+        x: e.x + Math.cos(a) * r,
+        y: e.y + Math.sin(a) * r,
+        value,
+        magnet: false,
+      });
+    }
+    this.audio.playKill();
+  }
+
+  private updateOrbs(dt: number) {
+    for (let i = this.orbs.length - 1; i >= 0; i -= 1) {
+      const o = this.orbs[i];
+      const d = dist(o, this.player);
+      if (d <= this.player.magnetRadius || o.magnet) {
+        o.magnet = true;
+        const dir = norm({ x: this.player.x - o.x, y: this.player.y - o.y });
+        const speed = 180 + clamp(this.player.magnetRadius, 0, 180) * 1.5;
+        o.x += dir.x * speed * dt;
+        o.y += dir.y * speed * dt;
+      }
+      if (d <= 16) {
+        this.player.xp += o.value;
+        this.orbs.splice(i, 1);
+        this.audio.playPickup();
+        while (this.player.xp >= this.player.xpToNext) {
+          this.player.xp -= this.player.xpToNext;
+          this.player.level += 1;
+          this.player.xpToNext = Math.floor(
+            BASE_XP + Math.pow(this.player.level, 1.28) * 11,
+          );
+          this.queuedLevelUps += 1;
+          if (this.player.level % 5 === 0) this.player.rerolls += 1;
+          this.audio.playLevelUp();
+          this.screenFlash = Math.max(this.screenFlash, 0.18);
+          this.shockwaves.push({
+            id: this.next(),
+            x: this.player.x,
+            y: this.player.y,
+            radius: 34,
+            growth: 170,
+            color: "rgba(216,180,94,0.9)",
+            life: 0.34,
+            maxLife: 0.34,
+          });
+        }
+        if (this.queuedLevelUps > 0 && !this.upgrades) {
+          this.paused = true;
+          this.upgrades = this.rollUpgrades();
+          this.upgradeGuard = UPGRADE_GUARD;
+        }
+      }
+    }
+  }
+
+  private spawn(dt: number) {
+    if (this.hasBoss() && this.enemies.length >= MAX_ENEMIES / 2) return;
+    this.spawnTimer -= dt;
+    if (this.spawnTimer > 0) return;
+    const danger = 1 + this.time * 0.018;
+    this.spawnTimer = Math.max(0.2, 0.96 - danger * 0.048);
+    let budget = 1.1 + danger * 0.38 + Math.random() * 0.5;
+    if (this.time < 18) budget *= 0.75;
+    if (this.hasBoss()) budget *= 0.7;
+    while (budget > 0 && this.enemies.length < MAX_ENEMIES) {
+      const kind = this.pickEnemy(budget);
+      budget -= ENEMY_DEF[kind].cost;
+      this.spawnEnemy(kind);
+    }
+  }
+
+  private maybeBoss() {
+    if (this.time < this.nextBossAt || this.hasBoss()) return;
+    this.spawnEnemy("boss");
+    this.nextBossAt += 75;
+    this.bossWarning = 1.5;
+    this.audio.playBossWarning();
+  }
+
+  private spawnEnemy(kind: EnemyKind) {
+    const d = ENEMY_DEF[kind];
+    const a = Math.random() * Math.PI * 2;
+    const range = Math.max(CANVAS_WIDTH, CANVAS_HEIGHT) * 0.8 + rand(80, 170);
+    const hpScale =
+      kind === "boss" ? 1 + this.wave * 0.12 : 1 + this.time * 0.012;
+    const spScale = 1 + this.time * 0.0016;
+    this.enemies.push({
+      id: this.next(),
+      kind,
+      x: this.player.x + Math.cos(a) * range,
+      y: this.player.y + Math.sin(a) * range,
+      vx: 0,
+      vy: 0,
+      hp: d.hp * hpScale,
+      maxHp: d.hp * hpScale,
+      radius: d.radius * (kind === "boss" ? 1 + this.wave * 0.025 : 1),
+      speed: d.speed * spScale,
+      damage: d.damage + this.wave * (kind === "boss" ? 1.8 : 0.8),
+      xp: d.xp + (kind === "boss" ? this.wave : Math.floor(this.wave / 4)),
+      hit: 0,
+      orbit: 0,
+      seed: Math.random() * Math.PI * 2,
+      primary: d.primary,
+      secondary: d.secondary,
+    });
+  }
+
+  private pickEnemy(budget: number) {
+    const c: Array<{ kind: EnemyKind; weight: number }> = [];
+    const add = (kind: EnemyKind, weight: number) => {
+      if (ENEMY_DEF[kind].cost <= budget + 0.2) c.push({ kind, weight });
+    };
+    add("oni", 5);
+    if (this.time > 12) add("yurei", 3.5);
+    if (this.time > 24) add("kappa", 3.2);
+    if (this.time > 42) add("tengu", 2.8);
+    let roll = Math.random() * c.reduce((s, x) => s + x.weight, 0);
+    for (const item of c) {
+      roll -= item.weight;
+      if (roll <= 0) return item.kind;
+    }
+    return "oni";
+  }
+
+  private rollUpgrades() {
+    const pool: Upgrade[] = [];
+    const active = new Set(this.skills.map((s) => s.key));
+    (Object.keys(SKILL_DEF) as SkillKey[]).forEach((key) => {
+      if (!active.has(key))
+        pool.push({
+          id: `new-${key}`,
+          title: `${SKILL_DEF[key].name}を習得`,
+          desc: this.skillDesc(key, 1),
+          icon: SKILL_DEF[key].icon,
+          weight: this.skills.length < 2 ? 5 : 3,
+          kind: "新術",
+          rarity: "RARE",
+          current: "未習得",
+          next: "Lv.1",
+          kicker: "型を増やす",
+          apply: (g) => g.ensureSkill(key),
+        });
+    });
+    this.skills.forEach((s) => {
+      if (s.level < 5)
+        pool.push({
+          id: `up-${s.key}`,
+          title: `${SKILL_DEF[s.key].name}強化`,
+          desc: this.skillDesc(s.key, s.level + 1),
+          icon: SKILL_DEF[s.key].icon,
+          weight: 3.4,
+          kind: "強化",
+          rarity: s.level >= 3 ? "EPIC" : "RARE",
+          current: `Lv.${s.level}`,
+          next: `Lv.${s.level + 1}`,
+          kicker: s.level >= 3 ? "主力を伸ばす" : "手数を増やす",
+          apply: (g) => {
+            const hit = g.skills.find((x) => x.key === s.key);
+            if (hit) hit.level += 1;
+          },
+        });
+    });
+    pool.push(
+      {
+        id: "dash-dmg",
+        title: "斬撃の重み",
+        desc: "ダッシュ威力 +18",
+        icon: "斬",
+        weight: 2.6,
+        kind: "機動",
+        rarity: "RARE",
+        current: `${Math.round(this.player.dashDamage)}`,
+        next: `${Math.round(this.player.dashDamage + 18)}`,
+        kicker: "貫通が重くなる",
+        apply: (g) => {
+          g.player.dashDamage += 18;
+        },
+      },
+      {
+        id: "dash-dist",
+        title: "踏み込み",
+        desc: "ダッシュ距離 +24",
+        icon: "迅",
+        weight: 2.2,
+        kind: "機動",
+        rarity: "COMMON",
+        current: `${Math.round(this.player.dashDistance)}`,
+        next: `${Math.round(this.player.dashDistance + 24)}`,
+        kicker: "安全圏へ抜ける",
+        apply: (g) => {
+          g.player.dashDistance += 24;
+        },
+      },
+      {
+        id: "max-hp",
+        title: "肉体鍛錬",
+        desc: "最大HP +22 / 即時回復",
+        icon: "命",
+        weight: this.player.hp / this.player.maxHp < 0.55 ? 3.4 : 1.4,
+        kind: "生存",
+        rarity: "RARE",
+        current: `${Math.round(this.player.maxHp)}`,
+        next: `${Math.round(this.player.maxHp + 22)}`,
+        kicker: "立て直し向き",
+        apply: (g) => {
+          g.player.maxHp += 22;
+          g.player.hp = Math.min(g.player.maxHp, g.player.hp + 32);
+        },
+      },
+      {
+        id: "heal",
+        title: "止血の術",
+        desc: "現在HPを 35% 回復",
+        icon: "癒",
+        weight: this.player.hp / this.player.maxHp < 0.75 ? 2.8 : 0.4,
+        kind: "生存",
+        rarity: "COMMON",
+        current: `${Math.round(this.player.hp)}`,
+        next: `${Math.round(Math.min(this.player.maxHp, this.player.hp + this.player.maxHp * 0.35))}`,
+        kicker: "今すぐ安全",
+        apply: (g) => {
+          g.player.hp = Math.min(
+            g.player.maxHp,
+            g.player.hp + g.player.maxHp * 0.35,
+          );
+        },
+      },
+      {
+        id: "magnet",
+        title: "気脈感知",
+        desc: "XP 吸引範囲 +36",
+        icon: "気",
+        weight: 1.8,
+        kind: "補助",
+        rarity: "COMMON",
+        current: `${Math.round(this.player.magnetRadius)}`,
+        next: `${Math.round(this.player.magnetRadius + 36)}`,
+        kicker: "育成が速くなる",
+        apply: (g) => {
+          g.player.magnetRadius += 36;
+        },
+      },
+      {
+        id: "shuriken-count",
+        title: "手裏剣追加",
+        desc: "周囲の手裏剣 +1",
+        icon: "鋼",
+        weight: this.player.shurikenCount < 5 ? 2.8 : 1.1,
+        kind: "強化",
+        rarity: "RARE",
+        current: `${this.player.shurikenCount}枚`,
+        next: `${this.player.shurikenCount + 1}枚`,
+        kicker: "接近拒否が厚い",
+        apply: (g) => {
+          g.player.shurikenCount += 1;
+        },
+      },
+      {
+        id: "shuriken-force",
+        title: "手裏剣研磨",
+        desc: "手裏剣威力 +6 / 半径 +4",
+        icon: "輪",
+        weight: 2.4,
+        kind: "強化",
+        rarity: "COMMON",
+        current: `${this.player.shurikenDamage}/${Math.round(this.player.shurikenRadius)}`,
+        next: `${this.player.shurikenDamage + 6}/${Math.round(this.player.shurikenRadius + 4)}`,
+        kicker: "近接火力UP",
+        apply: (g) => {
+          g.player.shurikenDamage += 6;
+          g.player.shurikenRadius += 4;
+        },
+      },
+    );
+    const picked: Upgrade[] = [];
+    const used = new Set<string>();
+    while (picked.length < 3) {
+      const items = pool.filter((x) => !used.has(x.id));
+      let roll =
+        Math.random() * items.reduce((s, x) => s + Math.max(0, x.weight), 0);
+      const found =
+        items.find((x) => (roll -= Math.max(0, x.weight)) <= 0) ??
+        items[items.length - 1];
+      if (!found) break;
+      used.add(found.id);
+      picked.push(found);
+    }
+    return picked;
+  }
+
+  private pickUpgrade(index: number) {
+    if (!this.upgrades || this.upgradeGuard > 0) return;
+    const choice = this.upgrades[index];
+    if (!choice) return;
+    choice.apply(this);
+    this.audio.playSelect();
+    this.screenFlash = Math.max(this.screenFlash, 0.22);
+    this.rewardBanner = {
+      title: choice.title,
+      subtitle: choice.kicker ?? choice.desc,
+      color: this.rarityColor(choice.rarity),
+      life: 1.2,
+      maxLife: 1.2,
+    };
+    this.shockwaves.push({
+      id: this.next(),
+      x: this.player.x,
+      y: this.player.y,
+      radius: 26,
+      growth: 190,
+      color: this.rarityColor(choice.rarity).replace("1)", "0.9)"),
+      life: 0.28,
+      maxLife: 0.28,
+    });
+    this.upgrades = null;
+    this.queuedLevelUps -= 1;
+    if (this.queuedLevelUps > 0) {
+      this.upgrades = this.rollUpgrades();
+      this.upgradeGuard = UPGRADE_GUARD;
+    } else {
+      this.paused = false;
+    }
+  }
+
+  private rerollUpgrades() {
+    if (!this.upgrades || this.upgradeGuard > 0 || this.player.rerolls <= 0)
+      return;
+    this.player.rerolls -= 1;
+    this.upgrades = this.rollUpgrades();
+    this.upgradeGuard = 0.18;
+    this.audio.playSelect();
+    this.screenFlash = Math.max(this.screenFlash, 0.1);
+  }
+
+  private ensureSkill(key: SkillKey) {
+    const current = this.skills.find((s) => s.key === key);
+    if (current) current.level = Math.min(current.level + 1, 5);
+    else this.skills.push({ key, level: 1, timer: key === "fire" ? 0 : 0.35 });
+  }
+
+  private skillLevel(key: SkillKey) {
+    return this.skills.find((s) => s.key === key)?.level ?? 0;
+  }
+
+  private skillCooldown(key: SkillKey, level: number) {
+    const base = SKILL_DEF[key].cooldown;
+    if (key === "fire") return 0;
+    if (key === "shadow") return Math.max(1.6, base - level * 0.35);
+    if (key === "lightning") return Math.max(0.65, base - level * 0.12);
+    if (key === "wind") return Math.max(0.38, base - level * 0.08);
+    return Math.max(0.55, base - level * 0.1);
+  }
+
+  private skillDesc(key: SkillKey, next: number) {
+    if (key === "lightning") return `近い敵を ${next + 1} 体まで感電`;
+    if (key === "fire") return `ダッシュの残火を強化 Lv.${next}`;
+    if (key === "shadow")
+      return `影の斬撃が ${1 + Math.floor((next + 1) / 2)} 回発生`;
+    if (key === "wind") return `追尾する風刃を強化 Lv.${next}`;
+    return `クナイ投射数 ${2 + next}`;
+  }
+
+  private rarityColor(rarity: Upgrade["rarity"]) {
+    if (rarity === "EPIC") return "rgba(183, 130, 255, 1)";
+    if (rarity === "RARE") return "rgba(135, 221, 217, 1)";
+    return "rgba(216, 180, 94, 1)";
+  }
+
+  private closest(origin: V) {
+    let best: Enemy | null = null;
+    let bestDist = Infinity;
+    for (const e of this.enemies) {
+      const d = dist(origin, e);
+      if (d < bestDist) {
+        bestDist = d;
+        best = e;
+      }
+    }
+    return best;
+  }
+
+  private hasBoss() {
+    return this.enemies.some((e) => e.kind === "boss");
+  }
+
+  private updateFx(dt: number) {
+    this.trauma = Math.max(0, this.trauma - dt * 1.8);
+    this.screenFlash = Math.max(0, this.screenFlash - dt * 1.35);
+    if (this.rewardBanner) {
+      this.rewardBanner.life -= dt;
+      if (this.rewardBanner.life <= 0) this.rewardBanner = null;
+    }
+    for (let i = this.slashes.length - 1; i >= 0; i -= 1) {
+      this.slashes[i].life -= dt;
+      if (this.slashes[i].life <= 0) this.slashes.splice(i, 1);
+    }
+    for (let i = this.bolts.length - 1; i >= 0; i -= 1) {
+      this.bolts[i].life -= dt;
+      if (this.bolts[i].life <= 0) this.bolts.splice(i, 1);
+    }
+    for (let i = this.afterimages.length - 1; i >= 0; i -= 1) {
+      this.afterimages[i].life -= dt;
+      if (this.afterimages[i].life <= 0) this.afterimages.splice(i, 1);
+    }
+    for (let i = this.shockwaves.length - 1; i >= 0; i -= 1) {
+      const wave = this.shockwaves[i];
+      wave.life -= dt;
+      wave.radius += wave.growth * dt;
+      if (wave.life <= 0) this.shockwaves.splice(i, 1);
+    }
+    for (let i = this.particles.length - 1; i >= 0; i -= 1) {
+      const p = this.particles[i];
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vx *= 0.92;
+      p.vy *= 0.92;
+      p.life -= dt;
+      if (p.life <= 0) this.particles.splice(i, 1);
+    }
+  }
+
+  private impact(
+    x: number,
+    y: number,
+    color: string,
+    count: number,
+    speed: number,
+  ) {
+    for (let i = 0; i < count; i += 1) {
+      const a = Math.random() * Math.PI * 2;
+      const life = rand(0.12, 0.32);
+      this.particles.push({
+        id: this.next(),
+        x,
+        y,
+        vx: Math.cos(a) * rand(speed * 0.4, speed),
+        vy: Math.sin(a) * rand(speed * 0.4, speed),
+        size: rand(2, 4.5),
+        color,
+        glow: 10,
+        life,
+        maxLife: life,
+      });
+    }
+  }
+
+  private openingParticles() {
+    for (let i = 0; i < 18; i += 1) {
+      const life = rand(0.6, 1.1);
+      this.particles.push({
+        id: this.next(),
+        x: rand(-80, 80),
+        y: rand(-80, 80),
+        vx: rand(-20, 20),
+        vy: rand(-20, 20),
+        size: rand(1.5, 3),
+        color: i % 3 === 0 ? "#d8b45e" : "#f5efe3",
+        glow: 6,
+        life,
+        maxLife: life,
+      });
+    }
+  }
+
+  private restart() {
+    this.player = this.makePlayer();
+    this.dash = null;
+    this.aimStart = null;
+    this.aimCurrent = null;
+    this.enemies = [];
+    this.projectiles = [];
+    this.flames = [];
+    this.orbs = [];
+    this.slashes = [];
+    this.bolts = [];
+    this.particles = [];
+    this.afterimages = [];
+    this.shockwaves = [];
+    this.skills = [];
+    this.shurikenAngle = 0;
+    this.time = 0;
+    this.wave = 1;
+    this.spawnTimer = 0.4;
+    this.nextBossAt = 65;
+    this.bossWarning = 0;
+    this.trauma = 0;
+    this.freeze = 0;
+    this.hintTimer = 12;
+    this.fireTrailTimer = 0;
+    this.screenFlash = 0;
+    this.rewardBanner = null;
+    this.upgrades = null;
+    this.upgradeGuard = 0;
+    this.queuedLevelUps = 0;
+    this.paused = false;
+    this.gameOver = false;
+    this.openingParticles();
+  }
+
+  private startDash(dir: V) {
+    if (this.dash || this.player.dashCooldown > 0) return;
+    this.dash = {
+      from: { x: this.player.x, y: this.player.y },
+      to: {
+        x: this.player.x + dir.x * this.player.dashDistance,
+        y: this.player.y + dir.y * this.player.dashDistance,
+      },
+      dir,
+      progress: 0,
+      hits: new Set<number>(),
+    };
+    this.player.invulnerable = DASH_DURATION + 0.08;
+    this.fireTrailTimer = 0;
+    this.audio.playDash();
+    this.screenFlash = Math.max(this.screenFlash, 0.12);
+    this.shockwaves.push({
+      id: this.next(),
+      x: this.player.x,
+      y: this.player.y,
+      radius: 22,
+      growth: 180,
+      color: "rgba(207,46,47,0.85)",
+      life: 0.2,
+      maxLife: 0.2,
+    });
+    this.slashes.push({
+      id: this.next(),
+      x: this.player.x + dir.x * 26,
+      y: this.player.y + dir.y * 26,
+      angle: Math.atan2(dir.y, dir.x),
+      radius: this.player.dashDistance * 0.42,
+      span: 0.72,
+      color: "rgba(207,46,47,0.8)",
+      life: 0.22,
+      maxLife: 0.22,
+    });
+  }
+
+  private next() {
+    this.id += 1;
+    return this.id;
+  }
+
+  private render() {
+    const shake = this.trauma * this.trauma * 18;
+    const camX = this.player.x - CANVAS_WIDTH / 2 + rand(-shake, shake);
+    const camY = this.player.y - CANVAS_HEIGHT / 2 + rand(-shake, shake);
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    this.ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    drawBackground(
+      this.ctx,
+      camX,
+      camY,
+      this.time,
+      1 + this.wave * 0.08 + this.enemies.length * 0.01,
+    );
+    drawEmbers(this.ctx, camX, camY, this.time);
+    this.ctx.save();
+    this.ctx.translate(-camX, -camY);
+    for (const flame of this.flames) drawFlamePatch(this.ctx, flame, this.time);
+    for (const orb of this.orbs) drawOrb(this.ctx, orb, this.time);
+    for (const wave of this.shockwaves) drawShockwave(this.ctx, wave);
+    for (const slash of this.slashes) drawSlashEffect(this.ctx, slash);
+    for (const bolt of this.bolts) drawLightning(this.ctx, bolt);
+    for (const p of this.projectiles) drawProjectile(this.ctx, p);
+    for (const e of this.enemies)
+      drawEnemy(this.ctx, { ...e, hitFlash: e.hit }, this.time);
+    for (let i = 0; i < this.player.shurikenCount; i += 1) {
+      const a =
+        this.shurikenAngle + (Math.PI * 2 * i) / this.player.shurikenCount;
+      drawShuriken(
+        this.ctx,
+        this.player.x + Math.cos(a) * this.player.shurikenRadius,
+        this.player.y + Math.sin(a) * this.player.shurikenRadius,
+        10,
+        a * 5,
+      );
+    }
+    if (this.aimStart && this.aimCurrent && !this.dash && !this.paused)
+      drawAimGuide(this.ctx, this.aimStart, this.aimCurrent, this.player);
+    for (const ghost of this.afterimages) drawAfterimage(this.ctx, ghost);
+    drawPlayer(
+      this.ctx,
+      { ...this.player, radius: PLAYER_RADIUS },
+      this.dash?.dir ?? null,
+      this.time,
+    );
+    for (const p of this.particles) drawParticle(this.ctx, p);
+    this.ctx.restore();
+    drawScreenFlash(
+      this.ctx,
+      this.screenFlash,
+      this.bossWarning > 0 ? "226,71,62" : "255,255,255",
+    );
+    drawVignette(this.ctx, 0.4 + this.trauma * 0.2);
+    drawHud(this.ctx, {
+      hp: this.player.hp,
+      maxHp: this.player.maxHp,
+      xp: this.player.xp,
+      xpToNext: this.player.xpToNext,
+      level: this.player.level,
+      wave: this.wave,
+      time: this.time,
+      killCount: this.player.killCount,
+      dashCooldownRatio:
+        1 - clamp(this.player.dashCooldown / DASH_COOLDOWN, 0, 1),
+      skills: this.skills.map((s) => ({
+        key: s.key,
+        name: SKILL_DEF[s.key].name,
+        icon: SKILL_DEF[s.key].icon,
+        level: s.level,
+        color: SKILL_DEF[s.key].color,
+        readyRatio:
+          s.key === "fire"
+            ? 1
+            : 1 - clamp(s.timer / this.skillCooldown(s.key, s.level), 0, 1),
+      })),
+      hintAlpha: clamp(this.hintTimer / 2.5, 0, 1),
+      boss:
+        this.enemies
+          .filter((e) => e.kind === "boss")
+          .map((e) => ({ hp: e.hp, maxHp: e.maxHp }))[0] ?? null,
+      bossWarning: this.bossWarning,
+    });
+    if (this.rewardBanner) drawRewardBanner(this.ctx, this.rewardBanner);
+    if (this.upgrades)
+      drawUpgradeOverlay(this.ctx, {
+        choices: this.upgrades.map((u) => ({
+          title: u.title,
+          description: u.desc,
+          icon: u.icon,
+          kind: u.kind,
+          rarity: u.rarity,
+          rarityColor: this.rarityColor(u.rarity),
+          current: u.current,
+          next: u.next,
+          kicker: u.kicker,
+        })),
+        guardTimer: this.upgradeGuard,
+        rerolls: this.player.rerolls,
+      });
+    if (this.gameOver)
+      drawGameOver(this.ctx, {
+        time: this.time,
+        level: this.player.level,
+        killCount: this.player.killCount,
+        wave: this.wave,
+      });
   }
 }

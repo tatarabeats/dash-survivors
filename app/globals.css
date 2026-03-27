@@ -1,19 +1,100 @@
 @import "tailwindcss";
 
+:root {
+  --paper: #f5efe3;
+  --gold: #d8b45e;
+}
+
 * {
+  box-sizing: border-box;
   margin: 0;
   padding: 0;
-  box-sizing: border-box;
 }
 
 html,
 body {
   height: 100%;
   overflow: hidden;
-  background: #000;
-  color: #fff;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body {
+  color: var(--paper);
+  font-family: var(--font-ui), "Hiragino Sans", sans-serif;
+  background:
+    radial-gradient(circle at 18% 18%, rgba(149, 20, 23, 0.16), transparent 24%),
+    radial-gradient(circle at 82% 12%, rgba(216, 180, 94, 0.08), transparent 22%),
+    linear-gradient(180deg, #06070d 0%, #0a0c14 50%, #15080d 100%);
   -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;
   user-select: none;
+}
+
+body::before,
+body::after {
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: fixed;
+}
+
+body::before {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.035) 0, transparent 18%),
+    linear-gradient(315deg, rgba(216, 180, 94, 0.03) 0, transparent 22%);
+  mix-blend-mode: screen;
+}
+
+body::after {
+  background: radial-gradient(circle at center, transparent 55%, rgba(0, 0, 0, 0.38) 100%);
+}
+
+main {
+  height: 100%;
+}
+
+.game-shell {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  justify-content: center;
+  padding: 16px;
+}
+
+.game-frame {
+  background:
+    linear-gradient(160deg, rgba(216, 180, 94, 0.24), rgba(216, 180, 94, 0.03)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0));
+  border-radius: 30px;
+  box-shadow:
+    0 28px 60px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(216, 180, 94, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  padding: 10px;
+  position: relative;
+}
+
+.game-frame::before {
+  border: 1px solid rgba(216, 180, 94, 0.18);
+  border-radius: 24px;
+  content: "";
+  inset: 7px;
+  pointer-events: none;
+  position: absolute;
+}
+
+.game-canvas {
+  border-radius: 22px;
+  display: block;
+  touch-action: none;
+}
+
+.game-caption {
+  color: rgba(245, 239, 227, 0.78);
+  font-family: var(--font-display), "Yu Mincho", serif;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-transform: uppercase;
 }

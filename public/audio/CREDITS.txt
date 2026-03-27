@@ -1,0 +1,7 @@
+Ambient: "darkambience.mp3" from OpenGameArt
+URL: https://opengameart.org/content/darkambience
+License: CC0 / CC-BY 4.0
+
+Dash slash: "sword sound.wav" from OpenGameArt "3 Melee sounds"
+URL: https://opengameart.org/content/3-melee-sounds
+License: CC0 / public domain style grant
