@@ -88,6 +88,7 @@ type Enemy = {
   rank: number;
   attackTimer: number;
   scrollDrop: boolean;
+  buffed: number;
 };
 type Projectile = {
   id: number;
@@ -104,6 +105,7 @@ type Projectile = {
   homing: number;
   color: string;
   hits: Set<number>;
+  ignite: boolean;
 };
 type Flame = {
   id: number;
@@ -346,6 +348,7 @@ export class NinjaSurvivors {
   private screenFlash = 0;
   private rewardBanner: RewardBanner | null = null;
   private upgrades: Upgrade[] | null = null;
+  private unlockedSynergies = new Set<string>();
   private upgradeGuard = 0;
   private queuedLevelUps = 0;
   private paused = false;
@@ -383,7 +386,11 @@ export class NinjaSurvivors {
       this.togglePause();
       return;
     }
-    if (this.manualPause) return;
+    // Unpause by tapping anywhere
+    if (this.manualPause) {
+      this.manualPause = false;
+      return;
+    }
     if (this.gameOver || this.upgrades) return;
     // Double-tap detection for ultimate
     const now = performance.now();
@@ -526,6 +533,7 @@ export class NinjaSurvivors {
     this.updateProjectiles(sdt);
     this.updateFlames(sdt);
     this.updateHazards(sdt);
+    this.updateEnemyAuras();
     this.updateEnemies(sdt);
     this.updateScrolls(sdt);
     this.updateOrbs(sdt);
@@ -687,6 +695,7 @@ export class NinjaSurvivors {
   }
 
   private castLightning(level: number) {
+    const shadowLv = this.skillLevel("shadow");
     const targets = this.enemies
       .map((e) => ({ e, d: dist(e, this.player) }))
       .filter((x) => x.d <= 220 + level * 32)
@@ -720,6 +729,20 @@ export class NinjaSurvivors {
         maxLife: 0.16,
       });
       this.impact(e.x, e.y, "#f5d57e", 4, 120);
+      if (shadowLv > 0) {
+        this.slashes.push({
+          id: this.next(),
+          x: e.x,
+          y: e.y,
+          angle: Math.random() * Math.PI * 2,
+          radius: 46 + shadowLv * 8,
+          span: 0.74,
+          color: "rgba(163,155,189,0.8)",
+          life: 0.18,
+          maxLife: 0.18,
+        });
+        e.hp -= 8 + shadowLv * 6;
+      }
     }
   }
 
@@ -739,29 +762,34 @@ export class NinjaSurvivors {
         x: t.x + Math.cos(a) * reach,
         y: t.y + Math.sin(a) * reach,
       };
-      this.slashes.push({
-        id: this.next(),
-        x: t.x,
-        y: t.y,
-        angle: a,
-        radius: reach * 0.6,
-        span: 0.9,
-        color: "rgba(163,155,189,0.82)",
-        life: 0.24,
-        maxLife: 0.24,
-      });
+      // Shadow clone afterimage
+      this.afterimages.push({ id: this.next(), x: start.x, y: start.y, angle: a, life: 0.4, maxLife: 0.4 });
+      // Primary + secondary slash arcs
+      this.slashes.push({ id: this.next(), x: t.x, y: t.y, angle: a, radius: reach * 0.7, span: 1.1, color: "rgba(180,160,220,0.9)", life: 0.32, maxLife: 0.32 });
+      this.slashes.push({ id: this.next(), x: t.x, y: t.y, angle: a + Math.PI, radius: reach * 0.5, span: 0.7, color: "rgba(140,120,190,0.65)", life: 0.25, maxLife: 0.25 });
+      // Shockwave at impact
+      this.shockwaves.push({ id: this.next(), x: t.x, y: t.y, radius: 12, growth: 120, color: "rgba(163,155,189,0.7)", life: 0.2, maxLife: 0.2 });
       for (const e of this.enemies)
-        if (segDist(e, start, end) <= e.radius + 12) {
+        if (segDist(e, start, end) <= e.radius + 14) {
           e.hp -= 28 + level * 18;
-          e.hit = 0.16;
+          e.hit = 0.18;
         }
-      this.impact(t.x, t.y, "#b0a3ce", 6, 150);
+      this.impact(t.x, t.y, "#b0a3ce", 8, 170);
+      // Trail particles
+      for (let p = 0; p < 5; p++) {
+        const pt = p / 4;
+        const px = lerp(start.x, end.x, pt);
+        const py = lerp(start.y, end.y, pt);
+        const life = rand(0.15, 0.3);
+        this.particles.push({ id: this.next(), x: px, y: py, vx: rand(-30, 30), vy: rand(-30, 30), size: rand(2, 4), color: "#c4b8e0", glow: 8, life, maxLife: life });
+      }
     }
   }
 
   private castWind(level: number) {
     if (!this.enemies.length) return;
     this.audio.playSkill("wind");
+    const fireLv = this.skillLevel("fire");
     const targets = this.enemies
       .map((e) => ({ e, d: dist(e, this.player) }))
       .sort((a, b) => a.d - b.d)
@@ -788,6 +816,7 @@ export class NinjaSurvivors {
         homing: 250 + level * 80,
         color: "#87ddd9",
         hits: new Set<number>(),
+        ignite: fireLv > 0,
       });
     });
   }
@@ -817,6 +846,7 @@ export class NinjaSurvivors {
         homing: 0,
         color: "#f5efe3",
         hits: new Set<number>(),
+        ignite: false,
       });
     }
   }
@@ -849,6 +879,25 @@ export class NinjaSurvivors {
         e.hp -= p.damage;
         e.hit = 0.14;
         this.impact(e.x, e.y, p.color, 4, 110);
+        if (p.kind === "wind" && p.ignite) {
+          this.flames.push({
+            id: this.next(),
+            x: e.x,
+            y: e.y,
+            radius: 18 + this.skillLevel("fire") * 3,
+            damage: 5 + this.skillLevel("fire") * 3,
+            life: 0.7,
+            maxLife: 0.7,
+            tick: 0.05,
+          });
+        }
+        if (p.kind === "kunai" && this.skillLevel("lightning") > 0) {
+          this.chainSpark(
+            e.id,
+            { x: e.x, y: e.y },
+            8 + this.skillLevel("lightning") * 4,
+          );
+        }
         p.pierce -= 1;
         if (p.pierce <= 0) {
           this.projectiles.splice(i, 1);
@@ -900,8 +949,9 @@ export class NinjaSurvivors {
         move.y += side.y * drift;
       }
       move = norm(move);
-      e.vx = lerp(e.vx, move.x * e.speed, dt * 4);
-      e.vy = lerp(e.vy, move.y * e.speed, dt * 4);
+      const speedScale = 1 + e.buffed;
+      e.vx = lerp(e.vx, move.x * e.speed * speedScale, dt * 4);
+      e.vy = lerp(e.vy, move.y * e.speed * speedScale, dt * 4);
       e.x += e.vx * dt;
       e.y += e.vy * dt;
       if (
@@ -910,7 +960,7 @@ export class NinjaSurvivors {
         d <= e.radius + PLAYER_RADIUS
       ) {
         const pressure = e.elite ? 1.15 : 1;
-        this.player.hp -= e.damage * dt * pressure;
+        this.player.hp -= e.damage * dt * pressure * (1 + e.buffed * 1.25);
         this.trauma = Math.min(1, this.trauma + 0.03);
         if (Math.random() < 0.12)
           this.impact(this.player.x, this.player.y, "#ff8a7c", 2, 65);
@@ -1073,6 +1123,21 @@ export class NinjaSurvivors {
     }
   }
 
+  private updateEnemyAuras() {
+    for (const enemy of this.enemies) enemy.buffed = 0;
+    for (const source of this.enemies) {
+      if (!source.elite && source.kind !== "boss") continue;
+      const auraRadius = source.kind === "boss" ? 156 : 124;
+      const auraStrength = source.kind === "boss" ? 0.34 : 0.22;
+      for (const enemy of this.enemies) {
+        if (enemy.id === source.id || enemy.kind === "boss") continue;
+        if (dist(enemy, source) <= auraRadius) {
+          enemy.buffed = Math.max(enemy.buffed, auraStrength);
+        }
+      }
+    }
+  }
+
   private updateBossEnemy(enemy: Enemy, dt: number) {
     enemy.attackTimer -= dt;
     if (enemy.attackTimer > 0) return;
@@ -1188,8 +1253,8 @@ export class NinjaSurvivors {
 
     if (scroll.kind === "storm") {
       this.rewardBanner = {
-        title: "Storm Scroll",
-        subtitle: "Chain lightning and fill your finisher gauge.",
+        title: "雷の巻物",
+        subtitle: "連鎖雷撃で奥義ゲージが満たされる",
         color: "rgba(245,213,126,1)",
         life: 1.1,
         maxLife: 1.1,
@@ -1198,8 +1263,8 @@ export class NinjaSurvivors {
       this.castStormBurst(3 + Math.floor(this.wave / 3), 26 + this.wave * 2.4);
     } else if (scroll.kind === "blood") {
       this.rewardBanner = {
-        title: "Blood Scroll",
-        subtitle: "Recover health and harden for the next exchange.",
+        title: "血の巻物",
+        subtitle: "体力を回復し、防御を固める",
         color: "rgba(207,46,47,1)",
         life: 1.1,
         maxLife: 1.1,
@@ -1212,8 +1277,8 @@ export class NinjaSurvivors {
       this.player.invulnerable = Math.max(this.player.invulnerable, 0.28);
     } else {
       this.rewardBanner = {
-        title: "Shadow Scroll",
-        subtitle: "Your next dash becomes a finisher.",
+        title: "影の巻物",
+        subtitle: "次のダッシュが必殺の一撃となる",
         color: "rgba(163,155,189,1)",
         life: 1.1,
         maxLife: 1.1,
@@ -1245,6 +1310,27 @@ export class NinjaSurvivors {
     }
   }
 
+  private chainSpark(skipEnemyId: number, origin: V, damage: number) {
+    const target = this.enemies
+      .filter((enemy) => enemy.id !== skipEnemyId && dist(enemy, origin) <= 120)
+      .sort((a, b) => dist(a, origin) - dist(b, origin))[0];
+    if (!target) return;
+    target.hp -= damage;
+    target.hit = 0.14;
+    const points: V[] = [origin];
+    for (let i = 1; i < 4; i += 1) {
+      const t = i / 4;
+      const wave = (Math.random() - 0.5) * 18;
+      points.push({
+        x: lerp(origin.x, target.x, t) + wave,
+        y: lerp(origin.y, target.y, t) - wave * 0.25,
+      });
+    }
+    points.push({ x: target.x, y: target.y });
+    this.bolts.push({ id: this.next(), points, life: 0.14, maxLife: 0.14 });
+    this.impact(target.x, target.y, "#f5d57e", 3, 110);
+  }
+
   private gainUltimate(amount: number) {
     const before = this.player.ultimate;
     this.player.ultimate = clamp(
@@ -1254,8 +1340,8 @@ export class NinjaSurvivors {
     );
     if (before < ULTIMATE_MAX && this.player.ultimate >= ULTIMATE_MAX) {
       this.rewardBanner = {
-        title: "ULTIMATE READY",
-        subtitle: "Your next dash becomes a killing art.",
+        title: "奥義解放",
+        subtitle: "ダブルタップで全方位斬を発動、または次のダッシュが必殺化",
         color: "rgba(245,213,126,1)",
         life: 0.9,
         maxLife: 0.9,
@@ -1356,6 +1442,7 @@ export class NinjaSurvivors {
       attackTimer:
         kind === "boss" ? Math.max(1.4, 3.8 - rank * 0.16) : rand(2.6, 4.8),
       scrollDrop: kind === "boss" || (elite && Math.random() < 0.7),
+      buffed: 0,
     });
   }
 
@@ -1590,10 +1677,50 @@ export class NinjaSurvivors {
     const current = this.skills.find((s) => s.key === key);
     if (current) current.level = Math.min(current.level + 1, 5);
     else this.skills.push({ key, level: 1, timer: key === "fire" ? 0 : 0.35 });
+    this.maybeUnlockSynergies();
   }
 
   private skillLevel(key: SkillKey) {
     return this.skills.find((s) => s.key === key)?.level ?? 0;
+  }
+
+  private maybeUnlockSynergies() {
+    const unlocks = [
+      {
+        id: "storm-shadow",
+        active: this.skillLevel("lightning") > 0 && this.skillLevel("shadow") > 0,
+        title: "雷影連殺",
+        subtitle: "雷遁が影の斬撃を伴う",
+        color: "rgba(245,213,126,1)",
+      },
+      {
+        id: "inferno-wind",
+        active: this.skillLevel("fire") > 0 && this.skillLevel("wind") > 0,
+        title: "炎風旋",
+        subtitle: "風遁が火種を広げる",
+        color: "rgba(239,125,50,1)",
+      },
+      {
+        id: "arc-kunai",
+        active: this.skillLevel("lightning") > 0 && this.skillLevel("kunai") > 0,
+        title: "雷走苦無",
+        subtitle: "クナイが近くの敵へ放電する",
+        color: "rgba(163,155,189,1)",
+      },
+    ];
+    for (const unlock of unlocks) {
+      if (!unlock.active || this.unlockedSynergies.has(unlock.id)) continue;
+      this.unlockedSynergies.add(unlock.id);
+      this.rewardBanner = {
+        title: unlock.title,
+        subtitle: unlock.subtitle,
+        color: unlock.color,
+        life: 1.15,
+        maxLife: 1.15,
+      };
+      this.audio.playSelect();
+      this.screenFlash = Math.max(this.screenFlash, 0.16);
+    }
   }
 
   private skillCooldown(key: SkillKey, level: number) {
@@ -1733,6 +1860,7 @@ export class NinjaSurvivors {
     this.afterimages = [];
     this.shockwaves = [];
     this.skills = [];
+    this.unlockedSynergies.clear();
     this.shurikenAngle = 0;
     this.time = 0;
     this.wave = 1;
@@ -1802,8 +1930,8 @@ export class NinjaSurvivors {
     });
     if (ultimate) {
       this.rewardBanner = {
-        title: "ULTIMATE SLASH",
-        subtitle: "Next dash erupts into a boss-cutting finisher.",
+        title: "必殺・裂空斬",
+        subtitle: "渾身の一撃が敵を切り裂く",
         color: "rgba(245,213,126,1)",
         life: 0.9,
         maxLife: 0.9,

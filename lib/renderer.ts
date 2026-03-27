@@ -642,6 +642,7 @@ export function drawEnemy(
     primary: string;
     secondary: string;
     elite: boolean;
+    buffed: number;
   },
   time: number,
 ) {
@@ -838,6 +839,13 @@ export function drawEnemy(
     ctx.arc(0, 0, enemy.radius * 1.18 * aura, 0, Math.PI * 2);
     ctx.stroke();
     ctx.shadowBlur = 0;
+  }
+  if (enemy.buffed > 0 && !enemy.elite && enemy.kind !== "boss") {
+    ctx.strokeStyle = `rgba(245,213,126,${0.28 + enemy.buffed * 0.9})`;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(0, 0, enemy.radius * 1.08, 0, Math.PI * 2);
+    ctx.stroke();
   }
   ctx.restore();
 }
