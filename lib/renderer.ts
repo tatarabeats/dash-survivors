@@ -1,3 +1,5 @@
+import { getSprite, drawFrame, drawSprite, type SpriteSheet } from "./sprites";
+
 export const CANVAS_WIDTH = 390;
 export const CANVAS_HEIGHT = 750;
 
@@ -361,7 +363,12 @@ export function drawOrb(
 
 export function drawScroll(
   ctx: CanvasRenderingContext2D,
-  scroll: { kind: "storm" | "blood" | "shadow"; x: number; y: number; radius: number },
+  scroll: {
+    kind: "storm" | "blood" | "shadow";
+    x: number;
+    y: number;
+    radius: number;
+  },
   time: number,
 ) {
   const bob = Math.sin(time * 4 + scroll.x * 0.03) * 2.5;
@@ -371,7 +378,8 @@ export function drawScroll(
       : scroll.kind === "blood"
         ? "rgba(207,46,47,0.82)"
         : "rgba(163,155,189,0.85)";
-  const sigil = scroll.kind === "storm" ? "雷" : scroll.kind === "blood" ? "血" : "影";
+  const sigil =
+    scroll.kind === "storm" ? "雷" : scroll.kind === "blood" ? "血" : "影";
   ctx.save();
   ctx.translate(scroll.x, scroll.y + bob);
   ctx.shadowColor = glow;
@@ -455,6 +463,20 @@ export function drawShuriken(
   radius: number,
   rotation: number,
 ) {
+  // Try sprite
+  if (
+    drawSprite(
+      ctx,
+      "shuriken",
+      x - radius,
+      y - radius,
+      radius * 2,
+      radius * 2,
+      rotation,
+    )
+  )
+    return;
+
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(rotation);
@@ -500,6 +522,56 @@ export function drawPlayer(
     ? Math.atan2(dashDir.y, dashDir.x)
     : Math.sin(time * 1.6) * 0.06;
   const isDashing = Boolean(dashDir);
+
+  // Try sprite rendering first
+  const ninjaSprite = isDashing
+    ? getSprite("ninjaAttack")
+    : getSprite("ninjaIdle");
+  if (ninjaSprite) {
+    const size = player.radius * 3.2;
+    const fps = isDashing ? 16 : 8;
+    const frame = Math.floor(time * fps) % ninjaSprite.total;
+    const flipX = dashDir ? dashDir.x < 0 : false;
+
+    // Shadow
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,0.3)";
+    ctx.beginPath();
+    ctx.ellipse(
+      player.x,
+      player.y + player.radius * 1.1,
+      player.radius * 0.9,
+      player.radius * 0.3,
+      0,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+
+    // Invulnerability blink
+    if (player.invulnerable > 0 && !isDashing && Math.sin(time * 14) > 0) {
+      ctx.globalAlpha = 0.4;
+    }
+
+    // Dashing glow
+    if (isDashing) {
+      ctx.shadowColor = "rgba(207,46,47,0.8)";
+      ctx.shadowBlur = 20;
+    }
+
+    drawFrame(
+      ctx,
+      ninjaSprite,
+      frame,
+      player.x - size / 2,
+      player.y - size / 2,
+      size,
+      size,
+      flipX,
+    );
+    ctx.restore();
+    return;
+  }
 
   ctx.save();
   ctx.translate(player.x, player.y);
@@ -647,6 +719,87 @@ export function drawEnemy(
   time: number,
 ) {
   const flash = clamp(enemy.hitFlash / 0.16, 0, 1);
+
+  // Try sprite rendering
+  const spriteMap: Record<string, string> = {
+    oni: "oni",
+    kappa: "kappa",
+    tengu: "tengu",
+    yurei: "yurei",
+    boss: "bossOni",
+  };
+  const spriteName = spriteMap[enemy.kind] as
+    | import("./sprites").SpriteName
+    | undefined;
+  if (spriteName) {
+    const sprite = getSprite(spriteName);
+    if (sprite) {
+      const size = enemy.radius * 2.4;
+      ctx.save();
+      // Shadow
+      ctx.fillStyle = "rgba(0,0,0,0.25)";
+      ctx.beginPath();
+      ctx.ellipse(
+        enemy.x,
+        enemy.y + enemy.radius * 0.8,
+        enemy.radius * 0.8,
+        enemy.radius * 0.25,
+        0,
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+      // Hit flash (white tint)
+      if (flash > 0) {
+        ctx.globalAlpha = 1;
+        ctx.filter = `brightness(${1 + flash * 2})`;
+      }
+      // Elite glow
+      if (enemy.elite) {
+        ctx.shadowColor = "rgba(245,213,126,0.6)";
+        ctx.shadowBlur = 12;
+      }
+      // Wobble animation
+      const wobble = Math.sin(time * 3 + enemy.x * 0.05) * 2;
+      drawFrame(
+        ctx,
+        sprite,
+        0,
+        enemy.x - size / 2,
+        enemy.y - size / 2 + wobble,
+        size,
+        size,
+      );
+      ctx.filter = "none";
+      // Boss HP bar
+      if (enemy.kind === "boss") {
+        const hpRatio = clamp(enemy.hp / enemy.maxHp, 0, 1);
+        ctx.fillStyle = "rgba(10,12,20,0.72)";
+        ctx.beginPath();
+        ctx.roundRect(
+          enemy.x - enemy.radius * 1.35,
+          enemy.y - enemy.radius - 22,
+          enemy.radius * 2.7,
+          7,
+          4,
+        );
+        ctx.fill();
+        ctx.fillStyle = "#cf332b";
+        ctx.beginPath();
+        ctx.roundRect(
+          enemy.x - enemy.radius * 1.35,
+          enemy.y - enemy.radius - 22,
+          enemy.radius * 2.7 * hpRatio,
+          7,
+          4,
+        );
+        ctx.fill();
+      }
+      ctx.restore();
+      return;
+    }
+  }
+
   ctx.save();
   ctx.translate(enemy.x, enemy.y);
 

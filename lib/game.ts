@@ -205,6 +205,16 @@ type RewardBanner = {
   life: number;
   maxLife: number;
 };
+type DamageNumber = {
+  id: number;
+  x: number;
+  y: number;
+  value: number;
+  color: string;
+  life: number;
+  maxLife: number;
+  crit: boolean;
+};
 
 const PLAYER_RADIUS = 15;
 const DASH_DURATION = 0.13;
@@ -356,12 +366,20 @@ export class NinjaSurvivors {
   private gameOver = false;
   private lastTapTime = 0;
   private lastTapPos: V = { x: 0, y: 0 };
+  private damageNumbers: DamageNumber[] = [];
+  private combo = 0;
+  private comboTimer = 0;
+  private titleScreen = true;
+  private bestTime = 0;
+  private bestKills = 0;
+  private bestWave = 0;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d")!;
     canvas.width = CANVAS_WIDTH;
     canvas.height = CANVAS_HEIGHT;
+    this.loadBestScore();
     this.openingParticles();
   }
 
@@ -381,6 +399,11 @@ export class NinjaSurvivors {
 
   onTouchStart(x: number, y: number) {
     this.resumeAudio();
+    // Title screen: tap to start
+    if (this.titleScreen) {
+      this.titleScreen = false;
+      return;
+    }
     // Pause button: top-right 50x50 area
     if (!this.gameOver && !this.upgrades && x >= CANVAS_WIDTH - 50 && y <= 50) {
       this.togglePause();
@@ -502,6 +525,10 @@ export class NinjaSurvivors {
   }
 
   private update(dt: number) {
+    if (this.titleScreen) {
+      this.updateFx(dt);
+      return;
+    }
     this.audio.setIntensity(
       clamp(
         (this.enemies.length / 42 +
@@ -543,6 +570,8 @@ export class NinjaSurvivors {
       this.player.hp = 0;
       this.gameOver = true;
       this.audio.playGameOver();
+      this.vibrate(100);
+      this.saveBestScore();
     }
   }
 
@@ -763,12 +792,48 @@ export class NinjaSurvivors {
         y: t.y + Math.sin(a) * reach,
       };
       // Shadow clone afterimage
-      this.afterimages.push({ id: this.next(), x: start.x, y: start.y, angle: a, life: 0.4, maxLife: 0.4 });
+      this.afterimages.push({
+        id: this.next(),
+        x: start.x,
+        y: start.y,
+        angle: a,
+        life: 0.4,
+        maxLife: 0.4,
+      });
       // Primary + secondary slash arcs
-      this.slashes.push({ id: this.next(), x: t.x, y: t.y, angle: a, radius: reach * 0.7, span: 1.1, color: "rgba(180,160,220,0.9)", life: 0.32, maxLife: 0.32 });
-      this.slashes.push({ id: this.next(), x: t.x, y: t.y, angle: a + Math.PI, radius: reach * 0.5, span: 0.7, color: "rgba(140,120,190,0.65)", life: 0.25, maxLife: 0.25 });
+      this.slashes.push({
+        id: this.next(),
+        x: t.x,
+        y: t.y,
+        angle: a,
+        radius: reach * 0.7,
+        span: 1.1,
+        color: "rgba(180,160,220,0.9)",
+        life: 0.32,
+        maxLife: 0.32,
+      });
+      this.slashes.push({
+        id: this.next(),
+        x: t.x,
+        y: t.y,
+        angle: a + Math.PI,
+        radius: reach * 0.5,
+        span: 0.7,
+        color: "rgba(140,120,190,0.65)",
+        life: 0.25,
+        maxLife: 0.25,
+      });
       // Shockwave at impact
-      this.shockwaves.push({ id: this.next(), x: t.x, y: t.y, radius: 12, growth: 120, color: "rgba(163,155,189,0.7)", life: 0.2, maxLife: 0.2 });
+      this.shockwaves.push({
+        id: this.next(),
+        x: t.x,
+        y: t.y,
+        radius: 12,
+        growth: 120,
+        color: "rgba(163,155,189,0.7)",
+        life: 0.2,
+        maxLife: 0.2,
+      });
       for (const e of this.enemies)
         if (segDist(e, start, end) <= e.radius + 14) {
           e.hp -= 28 + level * 18;
@@ -781,7 +846,18 @@ export class NinjaSurvivors {
         const px = lerp(start.x, end.x, pt);
         const py = lerp(start.y, end.y, pt);
         const life = rand(0.15, 0.3);
-        this.particles.push({ id: this.next(), x: px, y: py, vx: rand(-30, 30), vy: rand(-30, 30), size: rand(2, 4), color: "#c4b8e0", glow: 8, life, maxLife: life });
+        this.particles.push({
+          id: this.next(),
+          x: px,
+          y: py,
+          vx: rand(-30, 30),
+          vy: rand(-30, 30),
+          size: rand(2, 4),
+          color: "#c4b8e0",
+          glow: 8,
+          life,
+          maxLife: life,
+        });
       }
     }
   }
@@ -1029,6 +1105,22 @@ export class NinjaSurvivors {
         e.kind === "boss" ? undefined : this.rollScrollKind(),
       );
     this.audio.playKill();
+    // Combo
+    this.combo += 1;
+    this.comboTimer = 2.0;
+    // Damage number
+    this.damageNumbers.push({
+      id: this.next(),
+      x: e.x + rand(-8, 8),
+      y: e.y - e.radius,
+      value: Math.floor(e.maxHp),
+      color: e.kind === "boss" ? "#ff4444" : e.elite ? "#f5d57e" : "#ffffff",
+      life: 0.8,
+      maxLife: 0.8,
+      crit: e.kind === "boss" || e.elite,
+    });
+    // Vibration (mobile haptic feedback)
+    this.vibrate(e.kind === "boss" ? 80 : e.elite ? 40 : 15);
   }
 
   private updateOrbs(dt: number) {
@@ -1688,7 +1780,8 @@ export class NinjaSurvivors {
     const unlocks = [
       {
         id: "storm-shadow",
-        active: this.skillLevel("lightning") > 0 && this.skillLevel("shadow") > 0,
+        active:
+          this.skillLevel("lightning") > 0 && this.skillLevel("shadow") > 0,
         title: "雷影連殺",
         subtitle: "雷遁が影の斬撃を伴う",
         color: "rgba(245,213,126,1)",
@@ -1702,7 +1795,8 @@ export class NinjaSurvivors {
       },
       {
         id: "arc-kunai",
-        active: this.skillLevel("lightning") > 0 && this.skillLevel("kunai") > 0,
+        active:
+          this.skillLevel("lightning") > 0 && this.skillLevel("kunai") > 0,
         title: "雷走苦無",
         subtitle: "クナイが近くの敵へ放電する",
         color: "rgba(163,155,189,1)",
@@ -1798,6 +1892,16 @@ export class NinjaSurvivors {
       p.life -= dt;
       if (p.life <= 0) this.particles.splice(i, 1);
     }
+    // Damage numbers float up and fade
+    for (let i = this.damageNumbers.length - 1; i >= 0; i -= 1) {
+      const d = this.damageNumbers[i];
+      d.y -= 40 * dt;
+      d.life -= dt;
+      if (d.life <= 0) this.damageNumbers.splice(i, 1);
+    }
+    // Combo timer
+    this.comboTimer = Math.max(0, this.comboTimer - dt);
+    if (this.comboTimer <= 0) this.combo = 0;
   }
 
   private impact(
@@ -1823,6 +1927,50 @@ export class NinjaSurvivors {
         maxLife: life,
       });
     }
+  }
+
+  private vibrate(ms: number) {
+    try {
+      navigator?.vibrate?.(ms);
+    } catch {
+      /* not supported */
+    }
+  }
+
+  private loadBestScore() {
+    try {
+      const data = localStorage.getItem("ninja-survivors-best");
+      if (data) {
+        const parsed = JSON.parse(data);
+        this.bestTime = parsed.time ?? 0;
+        this.bestKills = parsed.kills ?? 0;
+        this.bestWave = parsed.wave ?? 0;
+      }
+    } catch {
+      /* */
+    }
+  }
+
+  private saveBestScore(): boolean {
+    const isNew =
+      this.time > this.bestTime || this.player.killCount > this.bestKills;
+    if (this.time > this.bestTime) this.bestTime = this.time;
+    if (this.player.killCount > this.bestKills)
+      this.bestKills = this.player.killCount;
+    if (this.wave > this.bestWave) this.bestWave = this.wave;
+    try {
+      localStorage.setItem(
+        "ninja-survivors-best",
+        JSON.stringify({
+          time: this.bestTime,
+          kills: this.bestKills,
+          wave: this.bestWave,
+        }),
+      );
+    } catch {
+      /* */
+    }
+    return isNew;
   }
 
   private openingParticles() {
@@ -1880,6 +2028,9 @@ export class NinjaSurvivors {
     this.manualPause = false;
     this.gameOver = false;
     this.lastTapTime = 0;
+    this.damageNumbers = [];
+    this.combo = 0;
+    this.comboTimer = 0;
     this.openingParticles();
   }
 
@@ -1906,6 +2057,7 @@ export class NinjaSurvivors {
     this.player.invulnerable = DASH_DURATION + 0.08;
     this.fireTrailTimer = 0;
     this.audio.playDash(ultimate);
+    this.vibrate(ultimate ? 50 : 20);
     this.screenFlash = Math.max(this.screenFlash, ultimate ? 0.18 : 0.12);
     this.shockwaves.push({
       id: this.next(),
@@ -2073,7 +2225,40 @@ export class NinjaSurvivors {
       this.time,
     );
     for (const p of this.particles) drawParticle(this.ctx, p);
+    // Damage numbers (in world space)
+    for (const d of this.damageNumbers) {
+      const alpha = clamp(d.life / d.maxLife, 0, 1);
+      this.ctx.save();
+      this.ctx.globalAlpha = alpha;
+      this.ctx.fillStyle = d.color;
+      this.ctx.font = `${d.crit ? "800" : "700"} ${d.crit ? 16 : 12}px "Noto Sans JP", sans-serif`;
+      this.ctx.textAlign = "center";
+      if (d.crit) {
+        this.ctx.shadowColor = d.color;
+        this.ctx.shadowBlur = 8;
+      }
+      this.ctx.fillText(String(d.value), d.x, d.y);
+      this.ctx.restore();
+    }
     this.ctx.restore();
+    // Combo counter (screen space)
+    if (this.combo >= 3) {
+      const comboAlpha = clamp(this.comboTimer / 0.5, 0, 1);
+      this.ctx.save();
+      this.ctx.globalAlpha = Math.min(1, comboAlpha);
+      this.ctx.fillStyle =
+        this.combo >= 20 ? "#ff4444" : this.combo >= 10 ? "#f5d57e" : "#ffffff";
+      this.ctx.font = `800 ${Math.min(32, 18 + this.combo * 0.5)}px "Noto Sans JP", sans-serif`;
+      this.ctx.textAlign = "center";
+      this.ctx.shadowColor = this.ctx.fillStyle;
+      this.ctx.shadowBlur = 12;
+      this.ctx.fillText(
+        `${this.combo} COMBO`,
+        CANVAS_WIDTH / 2,
+        CANVAS_HEIGHT - 170,
+      );
+      this.ctx.restore();
+    }
     drawScreenFlash(
       this.ctx,
       this.screenFlash,
@@ -2180,6 +2365,58 @@ export class NinjaSurvivors {
         CANVAS_WIDTH / 2,
         CANVAS_HEIGHT / 2 + 24,
       );
+      this.ctx.restore();
+    }
+    // Title screen
+    if (this.titleScreen) {
+      this.ctx.save();
+      this.ctx.fillStyle = "rgba(3,4,8,0.88)";
+      this.ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      // Title
+      this.ctx.fillStyle = "#f1ddbb";
+      this.ctx.textAlign = "center";
+      this.ctx.shadowColor = "rgba(207,46,47,0.6)";
+      this.ctx.shadowBlur = 24;
+      this.ctx.font = '800 36px "Shippori Mincho", "Yu Mincho", serif';
+      this.ctx.fillText("忍者", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 100);
+      this.ctx.font = '800 28px "Shippori Mincho", "Yu Mincho", serif';
+      this.ctx.fillText(
+        "サバイバーズ",
+        CANVAS_WIDTH / 2,
+        CANVAS_HEIGHT / 2 - 60,
+      );
+      this.ctx.shadowBlur = 0;
+      // Subtitle
+      this.ctx.fillStyle = "rgba(216,180,94,0.8)";
+      this.ctx.font = '500 13px "Noto Sans JP", sans-serif';
+      this.ctx.fillText(
+        "引いて離して、斬り抜けろ",
+        CANVAS_WIDTH / 2,
+        CANVAS_HEIGHT / 2 - 20,
+      );
+      // Tap to start (pulsing)
+      const pulse = 0.5 + Math.sin(this.time * 3) * 0.3;
+      this.ctx.globalAlpha = pulse;
+      this.ctx.fillStyle = "#f5efe3";
+      this.ctx.font = '700 16px "Noto Sans JP", sans-serif';
+      this.ctx.fillText(
+        "タップでスタート",
+        CANVAS_WIDTH / 2,
+        CANVAS_HEIGHT / 2 + 40,
+      );
+      this.ctx.globalAlpha = 1;
+      // Best score
+      if (this.bestTime > 0) {
+        this.ctx.fillStyle = "rgba(255,255,255,0.5)";
+        this.ctx.font = '500 12px "Noto Sans JP", sans-serif';
+        const bestMin = Math.floor(this.bestTime / 60);
+        const bestSec = Math.floor(this.bestTime % 60);
+        this.ctx.fillText(
+          `Best: ${bestMin}:${String(bestSec).padStart(2, "0")} / 討伐${this.bestKills} / 第${this.bestWave}波`,
+          CANVAS_WIDTH / 2,
+          CANVAS_HEIGHT / 2 + 80,
+        );
+      }
       this.ctx.restore();
     }
   }
