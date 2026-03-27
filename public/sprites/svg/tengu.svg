@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" shape-rendering="crispEdges">
+  <!-- Tengu (Brown winged creature with long nose) -->
+  <!-- Hat (tokin) -->
+  <rect x="14" y="0" width="20" height="4" fill="#1a1a1a"/>
+  <rect x="18" y="0" width="12" height="2" fill="#333333"/>
+  <!-- Head -->
+  <rect x="14" y="4" width="20" height="12" fill="#8B5E3C"/>
+  <!-- Long nose -->
+  <rect x="22" y="10" width="4" height="2" fill="#8B5E3C"/>
+  <rect x="22" y="12" width="4" height="2" fill="#7a4f30"/>
+  <rect x="22" y="14" width="4" height="4" fill="#6e4428"/>
+  <rect x="22" y="18" width="4" height="2" fill="#5c3820"/>
+  <!-- Eyes (fierce) -->
+  <rect x="16" y="8" width="4" height="4" fill="#ffffff"/>
+  <rect x="28" y="8" width="4" height="4" fill="#ffffff"/>
+  <rect x="18" y="8" width="2" height="4" fill="#cc0000"/>
+  <rect x="28" y="8" width="2" height="4" fill="#cc0000"/>
+  <!-- Red face marks -->
+  <rect x="14" y="10" width="2" height="4" fill="#cc3333"/>
+  <rect x="32" y="10" width="2" height="4" fill="#cc3333"/>
+  <!-- Body (yamabushi robes) -->
+  <rect x="14" y="16" width="20" height="14" fill="#4a3520"/>
+  <rect x="16" y="16" width="16" height="2" fill="#cc9933"/>
+  <!-- Pompom necklace -->
+  <rect x="20" y="18" width="4" height="4" fill="#ffffff"/>
+  <rect x="24" y="20" width="4" height="4" fill="#ffffff"/>
+  <!-- Wings -->
+  <rect x="0" y="12" width="14" height="4" fill="#2d1f0f"/>
+  <rect x="34" y="12" width="14" height="4" fill="#2d1f0f"/>
+  <rect x="0" y="16" width="10" height="4" fill="#3d2a14"/>
+  <rect x="38" y="16" width="10" height="4" fill="#3d2a14"/>
+  <rect x="2" y="20" width="8" height="2" fill="#4a3520"/>
+  <rect x="38" y="20" width="8" height="2" fill="#4a3520"/>
+  <!-- Feather detail -->
+  <rect x="4" y="14" width="2" height="2" fill="#1a1008"/>
+  <rect x="8" y="14" width="2" height="2" fill="#1a1008"/>
+  <rect x="38" y="14" width="2" height="2" fill="#1a1008"/>
+  <rect x="42" y="14" width="2" height="2" fill="#1a1008"/>
+  <!-- Legs -->
+  <rect x="16" y="30" width="6" height="8" fill="#4a3520"/>
+  <rect x="26" y="30" width="6" height="8" fill="#4a3520"/>
+  <!-- Geta (wooden sandals) -->
+  <rect x="14" y="38" width="8" height="4" fill="#6e4428"/>
+  <rect x="26" y="38" width="8" height="4" fill="#6e4428"/>
+  <rect x="16" y="42" width="2" height="4" fill="#4a3520"/>
+  <rect x="30" y="42" width="2" height="4" fill="#4a3520"/>
+</svg>

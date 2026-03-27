@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" shape-rendering="crispEdges">
+  <!-- Kappa (Green water creature) -->
+  <!-- Head plate (sara) -->
+  <rect x="14" y="2" width="20" height="4" fill="#4488cc"/>
+  <rect x="16" y="2" width="16" height="2" fill="#66aaee"/>
+  <!-- Head -->
+  <rect x="12" y="6" width="24" height="12" fill="#44aa44"/>
+  <!-- Shell-like head top -->
+  <rect x="14" y="4" width="20" height="4" fill="#44aa44"/>
+  <!-- Eyes (round, cute-menacing) -->
+  <rect x="16" y="10" width="6" height="6" fill="#ffffff"/>
+  <rect x="26" y="10" width="6" height="6" fill="#ffffff"/>
+  <rect x="18" y="12" width="4" height="4" fill="#111111"/>
+  <rect x="28" y="12" width="4" height="4" fill="#111111"/>
+  <!-- Beak -->
+  <rect x="20" y="16" width="8" height="4" fill="#ffaa00"/>
+  <rect x="22" y="18" width="4" height="2" fill="#cc8800"/>
+  <!-- Body -->
+  <rect x="14" y="20" width="20" height="12" fill="#44aa44"/>
+  <!-- Shell on back (visible from front as darker area) -->
+  <rect x="16" y="22" width="16" height="8" fill="#2d7a2d"/>
+  <rect x="18" y="24" width="12" height="4" fill="#226622"/>
+  <!-- Shell pattern -->
+  <rect x="22" y="22" width="4" height="8" fill="#1a5c1a"/>
+  <rect x="16" y="25" width="16" height="2" fill="#1a5c1a"/>
+  <!-- Arms (webbed) -->
+  <rect x="6" y="22" width="8" height="4" fill="#44aa44"/>
+  <rect x="34" y="22" width="8" height="4" fill="#44aa44"/>
+  <rect x="4" y="24" width="4" height="4" fill="#33883e"/>
+  <rect x="40" y="24" width="4" height="4" fill="#33883e"/>
+  <!-- Legs -->
+  <rect x="16" y="32" width="6" height="8" fill="#44aa44"/>
+  <rect x="26" y="32" width="6" height="8" fill="#44aa44"/>
+  <!-- Webbed feet -->
+  <rect x="12" y="40" width="10" height="4" fill="#33883e"/>
+  <rect x="26" y="40" width="10" height="4" fill="#33883e"/>
+  <rect x="12" y="42" width="2" height="4" fill="#33883e"/>
+  <rect x="36" y="42" width="2" height="4" fill="#33883e"/>
+</svg>

@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" shape-rendering="crispEdges">
+  <!-- Ninja character - idle frame 1 -->
+  <!-- Head wrap / mask -->
+  <rect x="16" y="6" width="16" height="4" fill="#2d2d2d"/>
+  <rect x="14" y="10" width="20" height="4" fill="#2d2d2d"/>
+  <!-- Eyes -->
+  <rect x="18" y="10" width="4" height="4" fill="#ffffff"/>
+  <rect x="26" y="10" width="4" height="4" fill="#ffffff"/>
+  <rect x="20" y="12" width="2" height="2" fill="#111111"/>
+  <rect x="28" y="12" width="2" height="2" fill="#111111"/>
+  <!-- Head band (red) -->
+  <rect x="14" y="8" width="20" height="2" fill="#cc3333"/>
+  <!-- Body -->
+  <rect x="16" y="14" width="16" height="12" fill="#1a1a2e"/>
+  <!-- Belt / sash -->
+  <rect x="16" y="22" width="16" height="2" fill="#cc3333"/>
+  <!-- Arms -->
+  <rect x="10" y="16" width="6" height="4" fill="#1a1a2e"/>
+  <rect x="32" y="16" width="6" height="4" fill="#1a1a2e"/>
+  <!-- Hands -->
+  <rect x="8" y="18" width="4" height="4" fill="#e8c39e"/>
+  <rect x="36" y="18" width="4" height="4" fill="#e8c39e"/>
+  <!-- Legs -->
+  <rect x="16" y="26" width="6" height="10" fill="#1a1a2e"/>
+  <rect x="26" y="26" width="6" height="10" fill="#1a1a2e"/>
+  <!-- Feet -->
+  <rect x="14" y="36" width="8" height="4" fill="#4a3728"/>
+  <rect x="26" y="36" width="8" height="4" fill="#4a3728"/>
+  <!-- Scarf tail -->
+  <rect x="34" y="8" width="4" height="2" fill="#cc3333"/>
+  <rect x="36" y="10" width="4" height="2" fill="#cc3333"/>
+</svg>

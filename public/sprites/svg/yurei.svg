@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" shape-rendering="crispEdges">
+  <!-- Yurei (Ghost) - translucent white/pale -->
+  <!-- Hair (long, black, hanging) -->
+  <rect x="12" y="2" width="24" height="6" fill="#1a1a2e"/>
+  <rect x="10" y="8" width="4" height="20" fill="#1a1a2e"/>
+  <rect x="34" y="8" width="4" height="20" fill="#1a1a2e"/>
+  <rect x="8" y="14" width="4" height="16" fill="#111122"/>
+  <rect x="36" y="14" width="4" height="16" fill="#111122"/>
+  <!-- Head -->
+  <rect x="14" y="4" width="20" height="14" fill="#e8e0f0" opacity="0.9"/>
+  <!-- Face -->
+  <rect x="16" y="10" width="6" height="6" fill="#111111"/>
+  <rect x="26" y="10" width="6" height="6" fill="#111111"/>
+  <!-- Hollow eyes glow -->
+  <rect x="18" y="12" width="2" height="2" fill="#8844cc"/>
+  <rect x="28" y="12" width="2" height="2" fill="#8844cc"/>
+  <!-- Mouth (small, eerie) -->
+  <rect x="22" y="16" width="4" height="2" fill="#333344"/>
+  <!-- Body (white kimono, fading) -->
+  <rect x="14" y="18" width="20" height="16" fill="#e8e0f0" opacity="0.8"/>
+  <rect x="16" y="18" width="2" height="16" fill="#d0c8e0" opacity="0.7"/>
+  <rect x="30" y="18" width="2" height="16" fill="#d0c8e0" opacity="0.7"/>
+  <!-- Kimono fold -->
+  <rect x="22" y="18" width="4" height="16" fill="#d4cce4" opacity="0.8"/>
+  <!-- Arms hanging limply -->
+  <rect x="10" y="22" width="4" height="12" fill="#e8e0f0" opacity="0.7"/>
+  <rect x="34" y="22" width="4" height="12" fill="#e8e0f0" opacity="0.7"/>
+  <!-- Hands (dangling) -->
+  <rect x="10" y="32" width="4" height="4" fill="#c8bdd8" opacity="0.8"/>
+  <rect x="34" y="32" width="4" height="4" fill="#c8bdd8" opacity="0.8"/>
+  <!-- Lower body fades to nothing (ghostly) -->
+  <rect x="16" y="34" width="16" height="4" fill="#e8e0f0" opacity="0.5"/>
+  <rect x="18" y="38" width="12" height="4" fill="#e8e0f0" opacity="0.3"/>
+  <rect x="20" y="42" width="8" height="4" fill="#e8e0f0" opacity="0.15"/>
+  <!-- Hitodama (ghost flames) -->
+  <rect x="4" y="8" width="4" height="4" fill="#8844cc" opacity="0.7"/>
+  <rect x="2" y="6" width="2" height="2" fill="#aa66ee" opacity="0.5"/>
+  <rect x="40" y="10" width="4" height="4" fill="#8844cc" opacity="0.7"/>
+  <rect x="42" y="8" width="2" height="2" fill="#aa66ee" opacity="0.5"/>
+</svg>

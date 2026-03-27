@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" shape-rendering="crispEdges">
+  <!-- Shuriken (throwing star) - 32x32 -->
+  <!-- Center -->
+  <rect x="14" y="14" width="4" height="4" fill="#888888"/>
+  <rect x="15" y="15" width="2" height="2" fill="#aaaaaa"/>
+  <!-- Top blade -->
+  <rect x="14" y="4" width="4" height="10" fill="#999999"/>
+  <rect x="15" y="2" width="2" height="4" fill="#aaaaaa"/>
+  <rect x="13" y="6" width="2" height="4" fill="#777777"/>
+  <rect x="17" y="6" width="2" height="4" fill="#bbbbbb"/>
+  <!-- Bottom blade -->
+  <rect x="14" y="18" width="4" height="10" fill="#999999"/>
+  <rect x="15" y="26" width="2" height="4" fill="#aaaaaa"/>
+  <rect x="13" y="22" width="2" height="4" fill="#bbbbbb"/>
+  <rect x="17" y="22" width="2" height="4" fill="#777777"/>
+  <!-- Left blade -->
+  <rect x="4" y="14" width="10" height="4" fill="#999999"/>
+  <rect x="2" y="15" width="4" height="2" fill="#aaaaaa"/>
+  <rect x="6" y="13" width="4" height="2" fill="#bbbbbb"/>
+  <rect x="6" y="17" width="4" height="2" fill="#777777"/>
+  <!-- Right blade -->
+  <rect x="18" y="14" width="10" height="4" fill="#999999"/>
+  <rect x="26" y="15" width="4" height="2" fill="#aaaaaa"/>
+  <rect x="22" y="13" width="4" height="2" fill="#777777"/>
+  <rect x="22" y="17" width="4" height="2" fill="#bbbbbb"/>
+  <!-- Edge highlights -->
+  <rect x="15" y="2" width="2" height="2" fill="#cccccc"/>
+  <rect x="2" y="15" width="2" height="2" fill="#cccccc"/>
+  <rect x="15" y="28" width="2" height="2" fill="#cccccc"/>
+  <rect x="28" y="15" width="2" height="2" fill="#cccccc"/>
+</svg>
