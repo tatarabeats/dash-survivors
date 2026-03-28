@@ -73,6 +73,11 @@ export class GameAudio {
       gain: ultimate ? 0.5 : 0.35,
       rate: ultimate ? 0.8 : 0.92 + Math.random() * 0.16,
     });
+    this.play("hit", {
+      gain: ultimate ? 0.18 : 0.1,
+      rate: ultimate ? 0.58 : 0.72,
+      delay: 0.015,
+    });
     if (ultimate) {
       this.play("ultimateCast", { gain: 0.4, rate: 0.9, delay: 0.02 });
     }
@@ -88,6 +93,12 @@ export class GameAudio {
     this.play("pickup", { gain: 0.25, rate: 0.9 + Math.random() * 0.4 });
   }
 
+  playHurt() {
+    if (!this.rateLimit("hurt", 0.08)) return;
+    this.play("hit", { gain: 0.42, rate: 0.78 + Math.random() * 0.12 });
+    this.play("hit", { gain: 0.16, rate: 0.52, delay: 0.02 });
+  }
+
   playOrbitHit() {
     if (!this.rateLimit("orbit", 0.04)) return;
     this.play("shurikenHit", { gain: 0.2, rate: 0.9 + Math.random() * 0.2 });
@@ -99,6 +110,12 @@ export class GameAudio {
 
   playSelect() {
     this.play("select", { gain: 0.35, rate: 1.0 });
+  }
+
+  playUpgradeOpen() {
+    if (!this.rateLimit("upgrade-open", 0.18)) return;
+    this.play("levelup", { gain: 0.28, rate: 1.06 });
+    this.play("select", { gain: 0.26, rate: 0.86, delay: 0.04 });
   }
 
   playGameOver() {
@@ -115,6 +132,17 @@ export class GameAudio {
       kunai: "kunai",
     };
     this.play(map[kind], { gain: 0.35, rate: 0.9 + Math.random() * 0.2 });
+    if (kind === "lightning") {
+      this.play("hit", { gain: 0.14, rate: 0.62, delay: 0.02 });
+    } else if (kind === "fire") {
+      this.play("slash", { gain: 0.1, rate: 0.72, delay: 0.01 });
+    } else if (kind === "shadow") {
+      this.play("slash", { gain: 0.16, rate: 0.84, delay: 0.02 });
+    } else if (kind === "wind") {
+      this.play("pickup", { gain: 0.08, rate: 0.6, delay: 0.01 });
+    } else if (kind === "kunai") {
+      this.play("shurikenHit", { gain: 0.1, rate: 1.08, delay: 0.01 });
+    }
   }
 
   playScroll(kind: "storm" | "blood" | "shadow") {

@@ -1,14 +1,14 @@
-import { getSprite, drawFrame, drawSprite, type SpriteSheet } from "./sprites";
+import { getSprite, drawFrame, drawSprite } from "./sprites";
 
 export const CANVAS_WIDTH = 390;
 export const CANVAS_HEIGHT = 750;
 
 export const UPGRADE_CARD = {
   x: 24,
-  y: 228,
+  y: 214,
   width: CANVAS_WIDTH - 48,
-  height: 92,
-  gap: 14,
+  height: 104,
+  gap: 12,
 };
 
 export const RESTART_BUTTON = {
@@ -1245,11 +1245,6 @@ export function drawHud(
     -Math.PI / 2 + Math.PI * 2 * data.dashCooldownRatio,
   );
   ctx.stroke();
-  ctx.fillStyle = "#f5efe3";
-  ctx.textAlign = "center";
-  ctx.font = `700 10px ${UI_FONT}`;
-  ctx.fillText("斬", readyRingX, readyRingY + 3);
-
   ctx.fillStyle = "rgba(8,10,18,0.92)";
   ctx.beginPath();
   ctx.arc(readyRingX, readyRingY, 10, 0, Math.PI * 2);
@@ -1260,6 +1255,10 @@ export function drawHud(
   ctx.font = `700 8px ${UI_FONT}`;
   ctx.fillStyle = data.ultimateReady ? "#f5d57e" : "rgba(255,255,255,0.55)";
   ctx.fillText("ULT", readyRingX, readyRingY - 18);
+  if (data.ultimateReady) {
+    ctx.fillStyle = "#f5d57e";
+    ctx.fillText("2 TAP", readyRingX, readyRingY + 16);
+  }
 
   let skillX = 20;
   const skillY = CANVAS_HEIGHT - 72;
@@ -1274,9 +1273,9 @@ export function drawHud(
     ctx.stroke();
 
     ctx.fillStyle = skill.color;
-    ctx.font = `700 16px ${UI_FONT}`;
+    ctx.font = `700 12px ${UI_FONT}`;
     ctx.textAlign = "left";
-    ctx.fillText(skill.icon, skillX + 10, skillY + 21);
+    ctx.fillText(skill.icon, skillX + 10, skillY + 20);
     ctx.fillStyle = "#f5efe3";
     ctx.font = `700 9px ${UI_FONT}`;
     ctx.fillText(skill.name, skillX + 10, skillY + 34);
@@ -1309,7 +1308,7 @@ export function drawHud(
     ctx.fillStyle = "#f1ddbb";
     ctx.textAlign = "center";
     ctx.font = `700 11px ${DISPLAY_FONT}`;
-    ctx.fillText("大鬼", CANVAS_WIDTH / 2, 99);
+    ctx.fillText("BOSS", CANVAS_WIDTH / 2, 99);
   }
 
   if (data.boss) {
@@ -1413,10 +1412,51 @@ export function drawScreenFlash(
   ctx.restore();
 }
 
+function drawUpgradeGlyph(
+  ctx: CanvasRenderingContext2D,
+  icon: string,
+  x: number,
+  y: number,
+  size: number,
+  color: string,
+) {
+  const radius = size / 2;
+  ctx.save();
+  ctx.translate(x, y);
+
+  // Background circle with gradient
+  const bg = ctx.createRadialGradient(0, -4, 0, 0, 0, radius);
+  bg.addColorStop(0, "rgba(27,32,44,0.96)");
+  bg.addColorStop(1, "rgba(8,10,18,0.98)");
+  ctx.fillStyle = bg;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Glowing border
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 14;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius - 1, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Emoji icon (centered)
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = `${Math.floor(size * 0.48)}px sans-serif`;
+  ctx.fillText(icon, 0, 2);
+
+  ctx.restore();
+}
+
 export function drawUpgradeOverlay(
   ctx: CanvasRenderingContext2D,
   data: {
     choices: Array<{
+      id: string;
       title: string;
       description: string;
       icon: string;
@@ -1438,15 +1478,15 @@ export function drawUpgradeOverlay(
   ctx.fillStyle = "#f1ddbb";
   ctx.textAlign = "center";
   ctx.font = `800 30px ${DISPLAY_FONT}`;
-  ctx.fillText("忍術を選ぶ", CANVAS_WIDTH / 2, 164);
+  ctx.fillText("強化を選ぶ", CANVAS_WIDTH / 2, 154);
   ctx.font = `500 13px ${UI_FONT}`;
   ctx.fillStyle = data.guardTimer > 0 ? "rgba(255,255,255,0.52)" : "#d8b45e";
   ctx.fillText(
     data.guardTimer > 0
       ? `誤タップ防止 ${data.guardTimer.toFixed(1)}s`
-      : "今の型を伸ばすか、新しい型を足すか選ぶ",
+      : "3つの中から 1つタップして取得",
     CANVAS_WIDTH / 2,
-    192,
+    178,
   );
 
   data.choices.forEach((choice, index) => {
@@ -1495,50 +1535,51 @@ export function drawUpgradeOverlay(
 
     ctx.fillStyle = "rgba(255,255,255,0.14)";
     ctx.beginPath();
-    ctx.roundRect(UPGRADE_CARD.x + 94, y + 10, 58, 18, 9);
+    ctx.roundRect(UPGRADE_CARD.x + 94, y + 10, 68, 18, 9);
     ctx.fill();
     ctx.fillStyle = "#f5efe3";
     ctx.font = `700 10px ${UI_FONT}`;
-    ctx.fillText(choice.kind, UPGRADE_CARD.x + 123, y + 23);
+    ctx.fillText(choice.kind, UPGRADE_CARD.x + 128, y + 23);
+
+    drawUpgradeGlyph(
+      ctx,
+      choice.icon,
+      UPGRADE_CARD.x + 42,
+      y + UPGRADE_CARD.height / 2,
+      52,
+      choice.rarityColor,
+    );
 
     ctx.fillStyle = "#f5efe3";
     ctx.textAlign = "left";
-    ctx.font = `700 24px ${UI_FONT}`;
-    ctx.fillText(choice.icon, UPGRADE_CARD.x + 18, y + 54);
     ctx.font = `700 16px ${UI_FONT}`;
-    ctx.fillText(choice.title, UPGRADE_CARD.x + 64, y + 42);
-    ctx.font = `500 12px ${UI_FONT}`;
+    ctx.fillText(choice.title, UPGRADE_CARD.x + 82, y + 44);
+    ctx.font = `600 12px ${UI_FONT}`;
     ctx.fillStyle = "rgba(255,255,255,0.78)";
-    ctx.fillText(choice.description, UPGRADE_CARD.x + 64, y + 60);
+    ctx.fillText(choice.description, UPGRADE_CARD.x + 82, y + 62);
 
     if (choice.current && choice.next) {
       ctx.fillStyle = "rgba(216, 180, 94, 0.2)";
       ctx.beginPath();
-      ctx.roundRect(
-        UPGRADE_CARD.x + 64,
-        y + 68,
-        UPGRADE_CARD.width - 80,
-        14,
-        7,
-      );
+      ctx.roundRect(UPGRADE_CARD.x + 82, y + 74, 120, 16, 7);
       ctx.fill();
       ctx.fillStyle = "rgba(255,255,255,0.88)";
       ctx.font = `700 10px ${UI_FONT}`;
       ctx.fillText(
         `${choice.current}  →  ${choice.next}`,
-        UPGRADE_CARD.x + 74,
-        y + 79,
+        UPGRADE_CARD.x + 92,
+        y + 86,
       );
     }
 
     if (choice.kicker) {
+      ctx.fillStyle = "rgba(255,255,255,0.12)";
+      ctx.beginPath();
+      ctx.roundRect(UPGRADE_CARD.x + 214, y + 74, 128, 16, 7);
+      ctx.fill();
       ctx.fillStyle = choice.rarityColor;
       ctx.font = `600 10px ${UI_FONT}`;
-      ctx.fillText(
-        choice.kicker,
-        UPGRADE_CARD.x + UPGRADE_CARD.width - 126,
-        y + 79,
-      );
+      ctx.fillText(choice.kicker, UPGRADE_CARD.x + 224, y + 86);
     }
   });
 
@@ -1571,7 +1612,7 @@ export function drawUpgradeOverlay(
   ctx.textAlign = "center";
   ctx.font = `700 13px ${UI_FONT}`;
   ctx.fillText(
-    `引き直し  ${data.rerolls}`,
+    `候補を更新  ${data.rerolls}`,
     CANVAS_WIDTH / 2,
     REROLL_BUTTON.y + 25,
   );

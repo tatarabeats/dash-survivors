@@ -1,6 +1,6 @@
 import sharp from 'sharp';
-import { readdir, readFile, mkdir } from 'fs/promises';
-import { join, parse } from 'path';
+import { readFile } from 'fs/promises';
+import { join } from 'path';
 
 const SVG_DIR = 'public/sprites/svg';
 const OUT_DIR = 'public/sprites';

@@ -173,7 +173,7 @@ type Upgrade = {
   desc: string;
   icon: string;
   weight: number;
-  kind: "新術" | "強化" | "機動" | "生存" | "補助";
+  kind: "新術" | "術強化" | "ダッシュ" | "生存" | "武器" | "育成";
   rarity: "COMMON" | "RARE" | "EPIC";
   current?: string;
   next?: string;
@@ -294,11 +294,11 @@ const SKILL_DEF: Record<
   SkillKey,
   { name: string; icon: string; color: string; cooldown: number }
 > = {
-  lightning: { name: "雷遁", icon: "雷", color: "#f5d57e", cooldown: 1.85 },
-  fire: { name: "火遁", icon: "火", color: "#ef7d32", cooldown: 0 },
-  shadow: { name: "影分身", icon: "影", color: "#a39bbd", cooldown: 3.9 },
-  wind: { name: "風遁", icon: "風", color: "#87ddd9", cooldown: 1.2 },
-  kunai: { name: "クナイ", icon: "刃", color: "#f5efe3", cooldown: 1.45 },
+  lightning: { name: "雷遁", icon: "⚡", color: "#f5d57e", cooldown: 1.85 },
+  fire: { name: "火遁", icon: "🔥", color: "#ef7d32", cooldown: 0 },
+  shadow: { name: "影分身", icon: "👥", color: "#a39bbd", cooldown: 3.9 },
+  wind: { name: "風遁", icon: "🌪️", color: "#87ddd9", cooldown: 1.2 },
+  kunai: { name: "クナイ", icon: "🗡️", color: "#f5efe3", cooldown: 1.45 },
 };
 
 const clamp = (v: number, min: number, max: number) =>
@@ -333,6 +333,8 @@ export class NinjaSurvivors {
   private dash: Dash | null = null;
   private aimStart: V | null = null;
   private aimCurrent: V | null = null;
+  private aimStartTime = 0;
+  private chargeLevel = 0; // 0-1, rendered as charge indicator
   private enemies: Enemy[] = [];
   private projectiles: Projectile[] = [];
   private flames: Flame[] = [];
@@ -415,19 +417,9 @@ export class NinjaSurvivors {
       return;
     }
     if (this.gameOver || this.upgrades) return;
-    // Double-tap detection for ultimate
-    const now = performance.now();
-    const dt = now - this.lastTapTime;
-    const tapDist = Math.hypot(x - this.lastTapPos.x, y - this.lastTapPos.y);
-    if (dt < 350 && tapDist < 60 && this.player.ultimate >= ULTIMATE_MAX) {
-      this.castUltimate();
-      this.lastTapTime = 0;
-      return;
-    }
-    this.lastTapTime = now;
-    this.lastTapPos = { x, y };
     this.aimStart = { x, y };
     this.aimCurrent = { x, y };
+    this.aimStartTime = performance.now();
   }
 
   onTouchMove(x: number, y: number) {
@@ -447,8 +439,26 @@ export class NinjaSurvivors {
     }
     const dx = x - this.aimStart.x;
     const dy = y - this.aimStart.y;
-    if (Math.hypot(dx, dy) >= DASH_PULL_MIN)
-      this.startDash(norm({ x: -dx, y: -dy }));
+    const swipeDist = Math.hypot(dx, dy);
+    if (swipeDist >= DASH_PULL_MIN) {
+      // Calculate charge: hold time affects damage multiplier
+      const holdTime = (performance.now() - this.aimStartTime) / 1000;
+      const charge = clamp(holdTime / 1.2, 0, 1); // 1.2s for full charge
+      this.startDash(norm({ x: -dx, y: -dy }), charge);
+    } else {
+      // Short tap (not a swipe) — check double-tap for ultimate
+      const now = performance.now();
+      const tapDt = now - this.lastTapTime;
+      const tapDist = Math.hypot(x - this.lastTapPos.x, y - this.lastTapPos.y);
+      if (tapDt < 400 && tapDist < 80 && this.player.ultimate >= ULTIMATE_MAX) {
+        this.castUltimate();
+        this.lastTapTime = 0;
+        this.cancelTouch();
+        return;
+      }
+      this.lastTapTime = now;
+      this.lastTapPos = { x, y };
+    }
     this.cancelTouch();
   }
 
@@ -549,6 +559,16 @@ export class NinjaSurvivors {
       return;
     }
     this.freeze = Math.max(0, this.freeze - dt);
+    // Update charge level when aiming
+    if (this.aimStart && !this.dash) {
+      this.chargeLevel = clamp(
+        (performance.now() - this.aimStartTime) / 1200,
+        0,
+        1,
+      );
+    } else if (!this.dash) {
+      this.chargeLevel = Math.max(0, this.chargeLevel - dt * 4);
+    }
     const sdt = this.freeze > 0 ? dt * 0.22 : dt;
     this.time += sdt;
     this.wave = 1 + Math.floor(this.time / WAVE_SECONDS);
@@ -627,9 +647,10 @@ export class NinjaSurvivors {
         continue;
       this.dash.hits.add(e.id);
       this.dash.hitCount += 1;
+      const chargeMult = 1 + this.chargeLevel * 1.5;
       e.hp -=
         (this.player.dashDamage + this.player.level * 2.2) *
-        (this.dash.ultimate ? 2.75 : 1);
+        (this.dash.ultimate ? 2.75 : chargeMult);
       e.hit = 0.16;
       const push = norm({ x: e.x - this.player.x, y: e.y - this.player.y });
       e.vx += push.x * 120;
@@ -1037,6 +1058,7 @@ export class NinjaSurvivors {
       ) {
         const pressure = e.elite ? 1.15 : 1;
         this.player.hp -= e.damage * dt * pressure * (1 + e.buffed * 1.25);
+        this.audio.playHurt();
         this.trauma = Math.min(1, this.trauma + 0.03);
         if (Math.random() < 0.12)
           this.impact(this.player.x, this.player.y, "#ff8a7c", 2, 65);
@@ -1160,9 +1182,7 @@ export class NinjaSurvivors {
           });
         }
         if (this.queuedLevelUps > 0 && !this.upgrades) {
-          this.paused = true;
-          this.upgrades = this.rollUpgrades();
-          this.upgradeGuard = UPGRADE_GUARD;
+          this.openUpgradeChoices();
         }
       }
     }
@@ -1206,6 +1226,7 @@ export class NinjaSurvivors {
       ) {
         hazard.hit = true;
         this.player.hp -= hazard.damage;
+        this.audio.playHurt();
         this.freeze = Math.max(this.freeze, 0.03);
         this.trauma = Math.min(1, this.trauma + 0.14);
         this.screenFlash = Math.max(this.screenFlash, 0.12);
@@ -1433,7 +1454,7 @@ export class NinjaSurvivors {
     if (before < ULTIMATE_MAX && this.player.ultimate >= ULTIMATE_MAX) {
       this.rewardBanner = {
         title: "奥義解放",
-        subtitle: "ダブルタップで全方位斬を発動、または次のダッシュが必殺化",
+        subtitle: "画面を2回タップで奥義・全方位斬を発動",
         color: "rgba(245,213,126,1)",
         life: 0.9,
         maxLife: 0.9,
@@ -1562,15 +1583,15 @@ export class NinjaSurvivors {
       if (!active.has(key))
         pool.push({
           id: `new-${key}`,
-          title: `${SKILL_DEF[key].name}を習得`,
-          desc: this.skillDesc(key, 1),
+          title: SKILL_DEF[key].name,
+          desc: this.skillDesc(key),
           icon: SKILL_DEF[key].icon,
           weight: this.skills.length < 2 ? 5 : 3,
           kind: "新術",
           rarity: "RARE",
           current: "未習得",
           next: "Lv.1",
-          kicker: "型を増やす",
+          kicker: "新しく使える",
           apply: (g) => g.ensureSkill(key),
         });
     });
@@ -1578,15 +1599,15 @@ export class NinjaSurvivors {
       if (s.level < 5)
         pool.push({
           id: `up-${s.key}`,
-          title: `${SKILL_DEF[s.key].name}強化`,
-          desc: this.skillDesc(s.key, s.level + 1),
+          title: SKILL_DEF[s.key].name,
+          desc: this.skillDesc(s.key),
           icon: SKILL_DEF[s.key].icon,
           weight: 3.4,
-          kind: "強化",
+          kind: "術強化",
           rarity: s.level >= 3 ? "EPIC" : "RARE",
           current: `Lv.${s.level}`,
           next: `Lv.${s.level + 1}`,
-          kicker: s.level >= 3 ? "主力を伸ばす" : "手数を増やす",
+          kicker: s.level >= 3 ? "主力を伸ばす" : "さらに強くなる",
           apply: (g) => {
             const hit = g.skills.find((x) => x.key === s.key);
             if (hit) hit.level += 1;
@@ -1598,9 +1619,9 @@ export class NinjaSurvivors {
         id: "dash-dmg",
         title: "斬撃の重み",
         desc: "ダッシュ威力 +18",
-        icon: "斬",
+        icon: "⚔️",
         weight: 2.6,
-        kind: "機動",
+        kind: "ダッシュ",
         rarity: "RARE",
         current: `${Math.round(this.player.dashDamage)}`,
         next: `${Math.round(this.player.dashDamage + 18)}`,
@@ -1613,9 +1634,9 @@ export class NinjaSurvivors {
         id: "dash-dist",
         title: "踏み込み",
         desc: "ダッシュ距離 +24",
-        icon: "迅",
+        icon: "💨",
         weight: 2.2,
-        kind: "機動",
+        kind: "ダッシュ",
         rarity: "COMMON",
         current: `${Math.round(this.player.dashDistance)}`,
         next: `${Math.round(this.player.dashDistance + 24)}`,
@@ -1626,9 +1647,9 @@ export class NinjaSurvivors {
       },
       {
         id: "max-hp",
-        title: "肉体鍛錬",
-        desc: "最大HP +22 / 即時回復",
-        icon: "命",
+        title: "HPアップ",
+        desc: "最大HP +22",
+        icon: "💚",
         weight: this.player.hp / this.player.maxHp < 0.55 ? 3.4 : 1.4,
         kind: "生存",
         rarity: "RARE",
@@ -1642,9 +1663,9 @@ export class NinjaSurvivors {
       },
       {
         id: "heal",
-        title: "止血の術",
-        desc: "現在HPを 35% 回復",
-        icon: "癒",
+        title: "回復",
+        desc: "HPを35%回復",
+        icon: "❤️‍🩹",
         weight: this.player.hp / this.player.maxHp < 0.75 ? 2.8 : 0.4,
         kind: "生存",
         rarity: "COMMON",
@@ -1660,11 +1681,11 @@ export class NinjaSurvivors {
       },
       {
         id: "magnet",
-        title: "気脈感知",
+        title: "XP吸引",
         desc: "XP 吸引範囲 +36",
-        icon: "気",
+        icon: "🧲",
         weight: 1.8,
-        kind: "補助",
+        kind: "育成",
         rarity: "COMMON",
         current: `${Math.round(this.player.magnetRadius)}`,
         next: `${Math.round(this.player.magnetRadius + 36)}`,
@@ -1677,9 +1698,9 @@ export class NinjaSurvivors {
         id: "shuriken-count",
         title: "手裏剣追加",
         desc: "周囲の手裏剣 +1",
-        icon: "鋼",
+        icon: "✦",
         weight: this.player.shurikenCount < 5 ? 2.8 : 1.1,
-        kind: "強化",
+        kind: "武器",
         rarity: "RARE",
         current: `${this.player.shurikenCount}枚`,
         next: `${this.player.shurikenCount + 1}枚`,
@@ -1692,9 +1713,9 @@ export class NinjaSurvivors {
         id: "shuriken-force",
         title: "手裏剣研磨",
         desc: "手裏剣威力 +6 / 半径 +4",
-        icon: "輪",
+        icon: "💫",
         weight: 2.4,
-        kind: "強化",
+        kind: "武器",
         rarity: "COMMON",
         current: `${this.player.shurikenDamage}/${Math.round(this.player.shurikenRadius)}`,
         next: `${this.player.shurikenDamage + 6}/${Math.round(this.player.shurikenRadius + 4)}`,
@@ -1748,8 +1769,7 @@ export class NinjaSurvivors {
     this.upgrades = null;
     this.queuedLevelUps -= 1;
     if (this.queuedLevelUps > 0) {
-      this.upgrades = this.rollUpgrades();
-      this.upgradeGuard = UPGRADE_GUARD;
+      this.openUpgradeChoices();
     } else {
       this.paused = false;
     }
@@ -1763,6 +1783,13 @@ export class NinjaSurvivors {
     this.upgradeGuard = 0.18;
     this.audio.playSelect();
     this.screenFlash = Math.max(this.screenFlash, 0.1);
+  }
+
+  private openUpgradeChoices() {
+    this.paused = true;
+    this.upgrades = this.rollUpgrades();
+    this.upgradeGuard = UPGRADE_GUARD;
+    this.audio.playUpgradeOpen();
   }
 
   private ensureSkill(key: SkillKey) {
@@ -1826,13 +1853,12 @@ export class NinjaSurvivors {
     return Math.max(0.55, base - level * 0.1);
   }
 
-  private skillDesc(key: SkillKey, next: number) {
-    if (key === "lightning") return `近い敵を ${next + 1} 体まで感電`;
-    if (key === "fire") return `ダッシュの残火を強化 Lv.${next}`;
-    if (key === "shadow")
-      return `影の斬撃が ${1 + Math.floor((next + 1) / 2)} 回発生`;
-    if (key === "wind") return `追尾する風刃を強化 Lv.${next}`;
-    return `クナイ投射数 ${2 + next}`;
+  private skillDesc(key: SkillKey) {
+    if (key === "lightning") return "近い敵へ雷を落とす";
+    if (key === "fire") return "ダッシュ後に炎の道を残す";
+    if (key === "shadow") return "分身が周囲を斬り払う";
+    if (key === "wind") return "追尾する風刃を飛ばす";
+    return "前方へ自動でクナイを放つ";
   }
 
   private rarityColor(rarity: Upgrade["rarity"]) {
@@ -2034,19 +2060,17 @@ export class NinjaSurvivors {
     this.openingParticles();
   }
 
-  private startDash(dir: V) {
+  private startDash(dir: V, charge = 0) {
     if (this.dash || this.player.dashCooldown > 0) return;
-    const ultimate = this.player.ultimate >= ULTIMATE_MAX;
-    if (ultimate) this.player.ultimate = 0;
+    const ultimate = false;
+    const chargeBonus = 1 + charge * 1.5; // up to 2.5x damage at full charge
+    const distBonus = 1 + charge * 0.3; // up to 1.3x distance at full charge
+    this.chargeLevel = charge;
     this.dash = {
       from: { x: this.player.x, y: this.player.y },
       to: {
-        x:
-          this.player.x +
-          dir.x * this.player.dashDistance * (ultimate ? 1.22 : 1),
-        y:
-          this.player.y +
-          dir.y * this.player.dashDistance * (ultimate ? 1.22 : 1),
+        x: this.player.x + dir.x * this.player.dashDistance * distBonus,
+        y: this.player.y + dir.y * this.player.dashDistance * distBonus,
       },
       dir,
       progress: 0,
@@ -2074,21 +2098,12 @@ export class NinjaSurvivors {
       x: this.player.x + dir.x * 26,
       y: this.player.y + dir.y * 26,
       angle: Math.atan2(dir.y, dir.x),
-      radius: this.player.dashDistance * (ultimate ? 0.58 : 0.42),
-      span: ultimate ? 0.92 : 0.72,
-      color: ultimate ? "rgba(245,213,126,0.95)" : "rgba(207,46,47,0.8)",
-      life: ultimate ? 0.28 : 0.22,
-      maxLife: ultimate ? 0.28 : 0.22,
+      radius: this.player.dashDistance * 0.42,
+      span: 0.72,
+      color: "rgba(207,46,47,0.8)",
+      life: 0.22,
+      maxLife: 0.22,
     });
-    if (ultimate) {
-      this.rewardBanner = {
-        title: "必殺・裂空斬",
-        subtitle: "渾身の一撃が敵を切り裂く",
-        color: "rgba(245,213,126,1)",
-        life: 0.9,
-        maxLife: 0.9,
-      };
-    }
   }
 
   private togglePause() {
@@ -2165,8 +2180,8 @@ export class NinjaSurvivors {
       });
     }
     this.rewardBanner = {
-      title: "必殺・全方位斬",
-      subtitle: "周囲の敵を一掃する渾身の一撃",
+      title: "奥義・全方位斬",
+      subtitle: "ダブルタップで放つ範囲フィニッシュ",
       color: "rgba(245,213,126,1)",
       life: 1.0,
       maxLife: 1.0,
@@ -2217,6 +2232,47 @@ export class NinjaSurvivors {
     }
     if (this.aimStart && this.aimCurrent && !this.dash && !this.paused)
       drawAimGuide(this.ctx, this.aimStart, this.aimCurrent, this.player);
+    // Charge indicator ring around player
+    if (this.chargeLevel > 0.05 && this.aimStart) {
+      this.ctx.save();
+      const chargeRadius = PLAYER_RADIUS + 8 + this.chargeLevel * 18;
+      const chargeAlpha = 0.3 + this.chargeLevel * 0.6;
+      const chargeColor =
+        this.chargeLevel >= 0.95
+          ? "#f5d57e"
+          : this.chargeLevel >= 0.5
+            ? "#ef7d32"
+            : "#cf2e2f";
+      this.ctx.strokeStyle = chargeColor;
+      this.ctx.globalAlpha = chargeAlpha;
+      this.ctx.lineWidth = 2 + this.chargeLevel * 3;
+      this.ctx.shadowColor = chargeColor;
+      this.ctx.shadowBlur = 12 + this.chargeLevel * 14;
+      this.ctx.beginPath();
+      this.ctx.arc(
+        this.player.x,
+        this.player.y,
+        chargeRadius,
+        -Math.PI / 2,
+        -Math.PI / 2 + Math.PI * 2 * this.chargeLevel,
+      );
+      this.ctx.stroke();
+      // Full charge flash
+      if (this.chargeLevel >= 0.95) {
+        this.ctx.globalAlpha = 0.15 + Math.sin(this.time * 8) * 0.1;
+        this.ctx.fillStyle = "#f5d57e";
+        this.ctx.beginPath();
+        this.ctx.arc(
+          this.player.x,
+          this.player.y,
+          chargeRadius + 4,
+          0,
+          Math.PI * 2,
+        );
+        this.ctx.fill();
+      }
+      this.ctx.restore();
+    }
     for (const ghost of this.afterimages) drawAfterimage(this.ctx, ghost);
     drawPlayer(
       this.ctx,
@@ -2300,6 +2356,7 @@ export class NinjaSurvivors {
     if (this.upgrades)
       drawUpgradeOverlay(this.ctx, {
         choices: this.upgrades.map((u) => ({
+          id: u.id,
           title: u.title,
           description: u.desc,
           icon: u.icon,
