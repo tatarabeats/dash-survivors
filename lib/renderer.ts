@@ -547,25 +547,26 @@ export function drawPlayer(
     : Math.sin(time * 1.6) * 0.06;
   const isDashing = Boolean(dashDir);
 
-  // Try sprite rendering first
+  // Try sprite rendering first — 3 poses: idle, ready (aiming), attack (dashing)
+  const isAiming = !isDashing && player.invulnerable <= 0; // will check charge later
   const ninjaSprite = isDashing
     ? getSprite("ninjaAttack")
-    : getSprite("ninjaIdle");
+    : getSprite("ninjaReady") || getSprite("ninjaIdle");
   if (ninjaSprite) {
-    const size = player.radius * 3.2;
-    const fps = isDashing ? 16 : 8;
-    const frame = Math.floor(time * fps) % ninjaSprite.total;
+    const size = player.radius * 4.0;
     const flipX = dashDir ? dashDir.x < 0 : false;
+    // Breathing/bobbing animation
+    const bob = isDashing ? 0 : Math.sin(time * 2.5) * 2;
 
-    // Shadow
+    // Ground shadow
     ctx.save();
-    ctx.fillStyle = "rgba(0,0,0,0.3)";
+    ctx.fillStyle = "rgba(0,0,0,0.45)";
     ctx.beginPath();
     ctx.ellipse(
       player.x,
-      player.y + player.radius * 1.1,
-      player.radius * 0.9,
-      player.radius * 0.3,
+      player.y + player.radius * 1.3,
+      player.radius * 1.1,
+      player.radius * 0.35,
       0,
       0,
       Math.PI * 2,
@@ -586,9 +587,9 @@ export function drawPlayer(
     drawFrame(
       ctx,
       ninjaSprite,
-      frame,
+      0,
       player.x - size / 2,
-      player.y - size / 2,
+      player.y - size / 2 + bob,
       size,
       size,
       flipX,

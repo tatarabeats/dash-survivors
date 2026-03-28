@@ -18,36 +18,41 @@ export type AnimState = {
 
 // All sprite definitions
 const SPRITE_DEFS = {
-  // Player - AI generated high quality
+  // Player - AI generated, 3 poses (rembg processed)
   ninjaIdle: {
-    path: "/sprites/generated/ninja_hero.png",
+    path: "/sprites/generated/ninja_idle.png",
+    frameW: 1024,
+    frameH: 1024,
+  },
+  ninjaReady: {
+    path: "/sprites/generated/ninja_ready.png",
     frameW: 1024,
     frameH: 1024,
   },
   ninjaAttack: {
-    path: "/sprites/generated/ninja_hero.png",
+    path: "/sprites/generated/ninja_slash.png",
     frameW: 1024,
     frameH: 1024,
   },
-  // Enemies - AI generated high quality
-  oni: { path: "/sprites/generated/oni_enemy.png", frameW: 1024, frameH: 1024 },
+  // Enemies - v2 green-bg versions (rembg processed)
+  oni: { path: "/sprites/generated/oni_v2.png", frameW: 1024, frameH: 1024 },
   kappa: {
-    path: "/sprites/generated/kappa_enemy.png",
+    path: "/sprites/generated/kappa_v2.png",
     frameW: 1024,
     frameH: 1024,
   },
   tengu: {
-    path: "/sprites/generated/tengu_enemy.png",
+    path: "/sprites/generated/tengu_v2.png",
     frameW: 1024,
     frameH: 1024,
   },
   yurei: {
-    path: "/sprites/generated/yurei_enemy.png",
+    path: "/sprites/generated/yurei_v2.png",
     frameW: 1024,
     frameH: 1024,
   },
   bossOni: {
-    path: "/sprites/generated/oni_enemy.png",
+    path: "/sprites/generated/oni_v2.png",
     frameW: 1024,
     frameH: 1024,
   },
