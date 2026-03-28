@@ -745,30 +745,44 @@ export function drawEnemy(
 ) {
   const flash = clamp(enemy.hitFlash / 0.16, 0, 1);
 
-  // Try sprite rendering
-  const spriteMap: Record<string, string> = {
+  // Try sprite rendering — idle + attack pose switching
+  const idleMap: Record<string, string> = {
     oni: "oni",
     kappa: "kappa",
     tengu: "tengu",
     yurei: "yurei",
     boss: "bossOni",
   };
-  const spriteName = spriteMap[enemy.kind] as
+  const atkMap: Record<string, string> = {
+    oni: "oniAtk",
+    kappa: "kappaAtk",
+    tengu: "tenguAtk",
+    yurei: "yureiAtk",
+    boss: "oniAtk",
+  };
+  // Switch to attack pose when hit (flash) or when close to being hit
+  const useAttackPose = flash > 0.3;
+  const spriteNameStr = useAttackPose
+    ? atkMap[enemy.kind]
+    : idleMap[enemy.kind];
+  const spriteName = spriteNameStr as
     | import("./sprites").SpriteName
     | undefined;
   if (spriteName) {
-    const sprite = getSprite(spriteName);
+    const sprite =
+      getSprite(spriteName) ||
+      getSprite(idleMap[enemy.kind] as import("./sprites").SpriteName);
     if (sprite) {
-      const size = enemy.radius * 2.4;
+      const size = enemy.radius * 3.0;
       ctx.save();
-      // Shadow
-      ctx.fillStyle = "rgba(0,0,0,0.25)";
+      // Ground shadow
+      ctx.fillStyle = "rgba(0,0,0,0.35)";
       ctx.beginPath();
       ctx.ellipse(
         enemy.x,
-        enemy.y + enemy.radius * 0.8,
-        enemy.radius * 0.8,
-        enemy.radius * 0.25,
+        enemy.y + enemy.radius * 1.0,
+        enemy.radius * 1.0,
+        enemy.radius * 0.3,
         0,
         0,
         Math.PI * 2,
@@ -784,17 +798,13 @@ export function drawEnemy(
         ctx.shadowColor = "rgba(245,213,126,0.6)";
         ctx.shadowBlur = 12;
       }
-      // Wobble animation
-      const wobble = Math.sin(time * 3 + enemy.x * 0.05) * 2;
-      drawFrame(
-        ctx,
-        sprite,
-        0,
-        enemy.x - size / 2,
-        enemy.y - size / 2 + wobble,
-        size,
-        size,
-      );
+      // Breathing + wobble animation
+      const bob = Math.sin(time * 2.2 + enemy.x * 0.03) * 2.5;
+      const lean = Math.sin(time * 1.5 + enemy.y * 0.02) * 0.04;
+      ctx.translate(enemy.x, enemy.y + bob);
+      ctx.rotate(lean);
+      drawFrame(ctx, sprite, 0, -size / 2, -size / 2, size, size);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.filter = "none";
       // Boss HP bar
       if (enemy.kind === "boss") {

@@ -34,7 +34,7 @@ const SPRITE_DEFS = {
     frameW: 1024,
     frameH: 1024,
   },
-  // Enemies - v2 green-bg versions (rembg processed)
+  // Enemies - idle poses (rembg processed)
   oni: { path: "/sprites/generated/oni_v2.png", frameW: 1024, frameH: 1024 },
   kappa: {
     path: "/sprites/generated/kappa_v2.png",
@@ -56,16 +56,37 @@ const SPRITE_DEFS = {
     frameW: 1024,
     frameH: 1024,
   },
-  // Backgrounds
-  bgBamboo: {
-    path: "/sprites/generated/bg_bamboo.png",
+  // Enemies - attack poses (rembg processed)
+  oniAtk: {
+    path: "/sprites/generated/oni_attack.png",
     frameW: 1024,
-    frameH: 576,
+    frameH: 1024,
+  },
+  kappaAtk: {
+    path: "/sprites/generated/kappa_attack.png",
+    frameW: 1024,
+    frameH: 1024,
+  },
+  tenguAtk: {
+    path: "/sprites/generated/tengu_attack.png",
+    frameW: 1024,
+    frameH: 1024,
+  },
+  yureiAtk: {
+    path: "/sprites/generated/yurei_attack.png",
+    frameW: 1024,
+    frameH: 1024,
+  },
+  // Backgrounds - TOP-DOWN perspective (matching character view)
+  bgBamboo: {
+    path: "/sprites/generated/bg_topdown_bamboo.png",
+    frameW: 1024,
+    frameH: 1024,
   },
   bgCastle: {
-    path: "/sprites/generated/bg_castle.png",
+    path: "/sprites/generated/bg_topdown_castle.png",
     frameW: 1024,
-    frameH: 576,
+    frameH: 1024,
   },
   // Items (keep existing)
   shuriken: { path: "/sprites/shuriken.png", frameW: 48, frameH: 48 },
