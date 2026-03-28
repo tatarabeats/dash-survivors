@@ -18,39 +18,51 @@ export type AnimState = {
 
 // All sprite definitions
 const SPRITE_DEFS = {
-  // Player (mini_ninja 16x16 sprite sheets)
+  // Player - AI generated high quality
   ninjaIdle: {
-    path: "/sprites/mini_ninja/( Free) Ninja pack/idle/ninja idle -Sheet.png",
-    frameW: 16,
-    frameH: 16,
+    path: "/sprites/generated/ninja_hero.png",
+    frameW: 1024,
+    frameH: 1024,
   },
   ninjaAttack: {
-    path: "/sprites/mini_ninja/( Free) Ninja pack/attack/ninja attack animation-Sheet.png",
-    frameW: 24,
-    frameH: 24,
+    path: "/sprites/generated/ninja_hero.png",
+    frameW: 1024,
+    frameH: 1024,
   },
-  ninjaWalk: {
-    path: "/sprites/mini_ninja/( Free) Ninja pack/walk cycle/ninja walk -Sheet.png",
-    frameW: 16,
-    frameH: 16,
+  // Enemies - AI generated high quality
+  oni: { path: "/sprites/generated/oni_enemy.png", frameW: 1024, frameH: 1024 },
+  kappa: {
+    path: "/sprites/generated/kappa_enemy.png",
+    frameW: 1024,
+    frameH: 1024,
   },
-  ninjaDeath: {
-    path: "/sprites/mini_ninja/( Free) Ninja pack/Death/death-Sheet.png",
-    frameW: 16,
-    frameH: 16,
+  tengu: {
+    path: "/sprites/generated/tengu_enemy.png",
+    frameW: 1024,
+    frameH: 1024,
   },
-  ninjaHurt: {
-    path: "/sprites/mini_ninja/( Free) Ninja pack/hurt/hurt frames-Sheet.png",
-    frameW: 16,
-    frameH: 16,
+  yurei: {
+    path: "/sprites/generated/yurei_enemy.png",
+    frameW: 1024,
+    frameH: 1024,
   },
-  // Enemies (48x48 individual sprites generated from SVG)
-  oni: { path: "/sprites/oni.png", frameW: 48, frameH: 48 },
-  kappa: { path: "/sprites/kappa.png", frameW: 48, frameH: 48 },
-  tengu: { path: "/sprites/tengu.png", frameW: 48, frameH: 48 },
-  yurei: { path: "/sprites/yurei.png", frameW: 48, frameH: 48 },
-  bossOni: { path: "/sprites/boss-oni.png", frameW: 48, frameH: 48 },
-  // Items
+  bossOni: {
+    path: "/sprites/generated/oni_enemy.png",
+    frameW: 1024,
+    frameH: 1024,
+  },
+  // Backgrounds
+  bgBamboo: {
+    path: "/sprites/generated/bg_bamboo.png",
+    frameW: 1024,
+    frameH: 576,
+  },
+  bgCastle: {
+    path: "/sprites/generated/bg_castle.png",
+    frameW: 1024,
+    frameH: 576,
+  },
+  // Items (keep existing)
   shuriken: { path: "/sprites/shuriken.png", frameW: 48, frameH: 48 },
   scroll: { path: "/sprites/scroll.png", frameW: 48, frameH: 48 },
   xpGem: { path: "/sprites/xp-gem.png", frameW: 48, frameH: 48 },

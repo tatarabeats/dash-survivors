@@ -84,6 +84,30 @@ export function drawBackground(
   time: number,
   danger: number,
 ) {
+  // Try to draw AI-generated background
+  const bgSprite = getSprite("bgBamboo");
+  if (bgSprite) {
+    // Tile the background with parallax
+    const parallaxX = -(cameraX * 0.1) % CANVAS_WIDTH;
+    ctx.drawImage(bgSprite.img, parallaxX, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    ctx.drawImage(
+      bgSprite.img,
+      parallaxX + CANVAS_WIDTH,
+      0,
+      CANVAS_WIDTH,
+      CANVAS_HEIGHT,
+    );
+    // Dark overlay for readability
+    ctx.fillStyle = `rgba(3,4,8,${0.35 + danger * 0.005})`;
+    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    // Danger red tint
+    if (danger > 3) {
+      ctx.fillStyle = `rgba(120,18,22,${Math.min(0.15, danger * 0.012)})`;
+      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    }
+    return;
+  }
+  // Fallback: procedural background
   const bg = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
   bg.addColorStop(0, "#06070d");
   bg.addColorStop(0.42, "#0b0d16");
