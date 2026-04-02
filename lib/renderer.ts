@@ -3,12 +3,19 @@ import { getSprite, drawFrame, drawSprite } from "./sprites";
 export const CANVAS_WIDTH = 390;
 export const CANVAS_HEIGHT = 750;
 
+// Horizontal 3-card layout
+const CARD_GAP = 8;
+const CARD_MARGIN = 12;
+const CARD_W = Math.floor((CANVAS_WIDTH - CARD_MARGIN * 2 - CARD_GAP * 2) / 3); // ~118
+const CARD_H = 320;
+const CARD_Y = 190;
+
 export const UPGRADE_CARD = {
-  x: 24,
-  y: 214,
-  width: CANVAS_WIDTH - 48,
-  height: 104,
-  gap: 12,
+  x: CARD_MARGIN,
+  y: CARD_Y,
+  width: CARD_W,
+  height: CARD_H,
+  gap: CARD_GAP,
 };
 
 export const RESTART_BUTTON = {
@@ -287,36 +294,93 @@ export function drawSlashEffect(
   },
 ) {
   const t = clamp(slash.life / slash.maxLife, 0, 1);
+  // Animated swing progress (0→1 over lifetime)
+  const swing = 1 - t;
+
   ctx.save();
   ctx.globalAlpha = t;
+
+  // Outer white slash arc (expanding)
   ctx.strokeStyle = `rgba(255,255,255,${0.35 + t * 0.45})`;
-  ctx.lineWidth = 6 * t + 2;
+  ctx.lineWidth = 8 * t + 2;
   ctx.lineCap = "round";
   ctx.shadowColor = "rgba(255,255,255,0.8)";
-  ctx.shadowBlur = 18 * t;
+  ctx.shadowBlur = 22 * t;
+  const outerR = slash.radius * (0.7 + swing * 0.4);
+  const swingOffset = swing * slash.span * 0.3; // arc sweeps as it fades
   ctx.beginPath();
   ctx.arc(
     slash.x,
     slash.y,
-    slash.radius * (1.08 - t * 0.15),
-    slash.angle - slash.span,
-    slash.angle + slash.span,
+    outerR,
+    slash.angle - slash.span + swingOffset,
+    slash.angle + slash.span + swingOffset,
   );
   ctx.stroke();
 
+  // Inner colored arc
   ctx.strokeStyle = slash.color;
-  ctx.lineWidth = 2.5 * t + 1;
+  ctx.lineWidth = 3.5 * t + 1;
   ctx.shadowColor = slash.color;
-  ctx.shadowBlur = 12 * t;
+  ctx.shadowBlur = 14 * t;
+  const innerR = outerR * 0.88;
   ctx.beginPath();
   ctx.arc(
     slash.x,
     slash.y,
-    slash.radius * (0.94 + t * 0.04),
-    slash.angle - slash.span * 0.82,
-    slash.angle + slash.span * 0.82,
+    innerR,
+    slash.angle - slash.span * 0.82 + swingOffset,
+    slash.angle + slash.span * 0.82 + swingOffset,
   );
   ctx.stroke();
+
+  // Sword blade line along the leading edge of the arc
+  if (t > 0.4) {
+    const bladeAlpha = clamp((t - 0.4) / 0.6, 0, 1);
+    const bladeTip = slash.angle + slash.span + swingOffset;
+    const bladeLen = slash.radius * 0.6;
+    const bx1 = slash.x + Math.cos(bladeTip) * (outerR - bladeLen * 0.3);
+    const by1 = slash.y + Math.sin(bladeTip) * (outerR - bladeLen * 0.3);
+    const bx2 = slash.x + Math.cos(bladeTip) * (outerR + bladeLen * 0.3);
+    const by2 = slash.y + Math.sin(bladeTip) * (outerR + bladeLen * 0.3);
+
+    ctx.globalAlpha = bladeAlpha * t;
+    ctx.strokeStyle = "rgba(255,255,255,0.9)";
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = "rgba(255,255,255,0.9)";
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.moveTo(bx1, by1);
+    ctx.lineTo(bx2, by2);
+    ctx.stroke();
+
+    // Blade highlight
+    ctx.strokeStyle = slash.color;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(bx1, by1);
+    ctx.lineTo(bx2, by2);
+    ctx.stroke();
+  }
+
+  // Speed lines emanating from center (sword swing feel)
+  if (t > 0.5) {
+    const lineAlpha = (t - 0.5) * 2;
+    ctx.globalAlpha = lineAlpha * 0.3;
+    ctx.strokeStyle = "rgba(255,255,255,0.5)";
+    ctx.lineWidth = 1;
+    ctx.shadowBlur = 0;
+    for (let i = 0; i < 3; i++) {
+      const la = slash.angle + (i - 1) * slash.span * 0.4 + swingOffset;
+      const lr1 = outerR * 0.5;
+      const lr2 = outerR * 1.15;
+      ctx.beginPath();
+      ctx.moveTo(slash.x + Math.cos(la) * lr1, slash.y + Math.sin(la) * lr1);
+      ctx.lineTo(slash.x + Math.cos(la) * lr2, slash.y + Math.sin(la) * lr2);
+      ctx.stroke();
+    }
+  }
+
   ctx.restore();
 }
 
@@ -547,16 +611,15 @@ export function drawPlayer(
     : Math.sin(time * 1.6) * 0.06;
   const isDashing = Boolean(dashDir);
 
-  // Try sprite rendering first — 3 poses: idle, ready (aiming), attack (dashing)
-  const isAiming = !isDashing && player.invulnerable <= 0; // will check charge later
+  // Try sprite rendering first — idle, run, attack poses
   const ninjaSprite = isDashing
-    ? getSprite("ninjaAttack")
-    : getSprite("ninjaReady") || getSprite("ninjaIdle");
+    ? getSprite("ninjaAttack") || getSprite("ninjaRun")
+    : getSprite("ninjaIdle");
   if (ninjaSprite) {
     const size = player.radius * 4.0;
     const flipX = dashDir ? dashDir.x < 0 : false;
-    // Breathing/bobbing animation
-    const bob = isDashing ? 0 : Math.sin(time * 2.5) * 2;
+    // Breathing/bobbing animation — stronger bob when idle
+    const bob = isDashing ? 0 : Math.sin(time * 2.8) * 3;
 
     // Ground shadow
     ctx.save();
@@ -701,13 +764,68 @@ export function drawPlayer(
 
 export function drawAfterimage(
   ctx: CanvasRenderingContext2D,
-  ghost: { x: number; y: number; angle: number; life: number; maxLife: number },
+  ghost: {
+    x: number;
+    y: number;
+    angle: number;
+    life: number;
+    maxLife: number;
+    isShadow?: boolean;
+  },
 ) {
-  const alpha = clamp(ghost.life / ghost.maxLife, 0, 1);
+  const t = clamp(ghost.life / ghost.maxLife, 0, 1);
+
+  // Try drawing ninja sprite as semi-transparent copy
+  const ninjaSprite = getSprite("ninjaAttack") || getSprite("ninjaReady");
+  if (ninjaSprite) {
+    const size = ghost.isShadow ? 56 : 42;
+    const flipX = Math.cos(ghost.angle) < 0;
+    ctx.save();
+    ctx.globalAlpha = t * (ghost.isShadow ? 0.55 : 0.35);
+    if (ghost.isShadow) {
+      // Purple tint for shadow clones
+      ctx.shadowColor = "rgba(163,155,189,0.8)";
+      ctx.shadowBlur = 18 * t;
+    } else {
+      ctx.shadowColor = "rgba(207,46,47,0.6)";
+      ctx.shadowBlur = 12 * t;
+    }
+    drawFrame(
+      ctx,
+      ninjaSprite,
+      0,
+      ghost.x - size / 2,
+      ghost.y - size / 2,
+      size,
+      size,
+      flipX,
+    );
+    ctx.restore();
+
+    // Motion trail
+    ctx.save();
+    ctx.translate(ghost.x, ghost.y);
+    ctx.rotate(ghost.angle);
+    ctx.globalAlpha = t * 0.3;
+    const tc = ghost.isShadow ? "163,155,189" : "207,46,47";
+    const trail = ctx.createLinearGradient(-36, 0, 0, 0);
+    trail.addColorStop(0, `rgba(${tc},0)`);
+    trail.addColorStop(1, `rgba(${tc},0.4)`);
+    ctx.fillStyle = trail;
+    ctx.beginPath();
+    ctx.moveTo(-36, -14);
+    ctx.quadraticCurveTo(-8, 0, -36, 14);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
+  // Fallback procedural rendering
   ctx.save();
   ctx.translate(ghost.x, ghost.y);
   ctx.rotate(ghost.angle);
-  ctx.globalAlpha = alpha * 0.42;
+  ctx.globalAlpha = t * 0.42;
   const gradient = ctx.createLinearGradient(-24, 0, 18, 0);
   gradient.addColorStop(0, "rgba(255,255,255,0)");
   gradient.addColorStop(0.4, "rgba(255,255,255,0.18)");
@@ -718,7 +836,6 @@ export function drawAfterimage(
   ctx.quadraticCurveTo(8, 0, -24, 12);
   ctx.closePath();
   ctx.fill();
-
   ctx.fillStyle = "rgba(245, 239, 227, 0.28)";
   ctx.beginPath();
   ctx.ellipse(0, 0, 12, 14, 0, 0, Math.PI * 2);
@@ -1095,6 +1212,36 @@ export function drawParticle(
   ctx.beginPath();
   ctx.arc(particle.x, particle.y, particle.size * alpha, 0, Math.PI * 2);
   ctx.fill();
+  ctx.restore();
+}
+
+export function drawPaperShred(
+  ctx: CanvasRenderingContext2D,
+  shred: {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    rot: number;
+    life: number;
+    maxLife: number;
+    color: string;
+  },
+) {
+  const alpha = clamp(shred.life / shred.maxLife, 0, 1);
+  ctx.save();
+  ctx.globalAlpha = alpha * alpha;
+  ctx.translate(shred.x, shred.y);
+  ctx.rotate(shred.rot);
+  ctx.fillStyle = shred.color;
+  ctx.fillRect(-shred.w / 2, -shred.h / 2, shred.w, shred.h);
+  // fold crease line
+  ctx.strokeStyle = "rgba(0,0,0,0.3)";
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(-shred.w / 2, 0);
+  ctx.lineTo(shred.w / 2, 0);
+  ctx.stroke();
   ctx.restore();
 }
 
@@ -1507,114 +1654,260 @@ export function drawUpgradeOverlay(
   },
 ) {
   ctx.save();
-  ctx.fillStyle = "rgba(3,4,8,0.88)";
+  ctx.fillStyle = "rgba(3,4,8,0.92)";
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
+  // Title
   ctx.fillStyle = "#f1ddbb";
   ctx.textAlign = "center";
-  ctx.font = `800 30px ${DISPLAY_FONT}`;
-  ctx.fillText("強化を選ぶ", CANVAS_WIDTH / 2, 154);
-  ctx.font = `500 13px ${UI_FONT}`;
+  ctx.font = `800 28px ${DISPLAY_FONT}`;
+  ctx.shadowColor = "rgba(216,180,94,0.4)";
+  ctx.shadowBlur = 16;
+  ctx.fillText("強化を選べ", CANVAS_WIDTH / 2, 130);
+  ctx.shadowBlur = 0;
+  ctx.font = `500 12px ${UI_FONT}`;
   ctx.fillStyle = data.guardTimer > 0 ? "rgba(255,255,255,0.52)" : "#d8b45e";
   ctx.fillText(
     data.guardTimer > 0
       ? `誤タップ防止 ${data.guardTimer.toFixed(1)}s`
-      : "3つの中から 1つタップして取得",
+      : "タップして取得",
     CANVAS_WIDTH / 2,
-    178,
+    152,
   );
 
-  data.choices.forEach((choice, index) => {
-    const y = UPGRADE_CARD.y + index * (UPGRADE_CARD.height + UPGRADE_CARD.gap);
-    ctx.globalAlpha = data.guardTimer > 0 ? 0.42 : 1;
-    const cardGradient = ctx.createLinearGradient(
-      UPGRADE_CARD.x,
-      y,
-      UPGRADE_CARD.x + UPGRADE_CARD.width,
-      y + UPGRADE_CARD.height,
-    );
-    cardGradient.addColorStop(0, "rgba(17,21,30,0.96)");
-    cardGradient.addColorStop(1, "rgba(34,11,15,0.96)");
-    ctx.fillStyle = cardGradient;
-    ctx.beginPath();
-    ctx.roundRect(
-      UPGRADE_CARD.x,
-      y,
-      UPGRADE_CARD.width,
-      UPGRADE_CARD.height,
-      18,
-    );
-    ctx.fill();
+  // Rarity-specific visual config
+  const rarityVfx: Record<
+    string,
+    {
+      glowColor: string;
+      glowIntensity: number;
+      borderWidth: number;
+      bgTop: string;
+      bgBot: string;
+      particleCount: number;
+      cardBgSprite: string | null;
+    }
+  > = {
+    COMMON: {
+      glowColor: "rgba(216,180,94,0.3)",
+      glowIntensity: 8,
+      borderWidth: 1.5,
+      bgTop: "rgba(22,26,36,0.97)",
+      bgBot: "rgba(38,30,20,0.97)",
+      particleCount: 0,
+      cardBgSprite: "cardCommon",
+    },
+    RARE: {
+      glowColor: "rgba(135,221,217,0.5)",
+      glowIntensity: 16,
+      borderWidth: 2,
+      bgTop: "rgba(12,28,34,0.97)",
+      bgBot: "rgba(18,38,42,0.97)",
+      particleCount: 3,
+      cardBgSprite: "cardRare",
+    },
+    EPIC: {
+      glowColor: "rgba(183,130,255,0.6)",
+      glowIntensity: 24,
+      borderWidth: 2.5,
+      bgTop: "rgba(24,12,38,0.97)",
+      bgBot: "rgba(36,14,46,0.97)",
+      particleCount: 6,
+      cardBgSprite: "cardEpic",
+    },
+  };
 
+  data.choices.forEach((choice, index) => {
+    const cx = UPGRADE_CARD.x + index * (UPGRADE_CARD.width + UPGRADE_CARD.gap);
+    const cy = UPGRADE_CARD.y;
+    const cw = UPGRADE_CARD.width;
+    const ch = UPGRADE_CARD.height;
+    const vfx = rarityVfx[choice.rarity] || rarityVfx.COMMON;
+
+    ctx.globalAlpha = data.guardTimer > 0 ? 0.42 : 1;
+
+    // Outer glow (rarity-dependent)
+    if (data.guardTimer <= 0 && vfx.glowIntensity > 0) {
+      ctx.shadowColor = vfx.glowColor;
+      ctx.shadowBlur = vfx.glowIntensity;
+    }
+
+    // Card background
+    const cardGrad = ctx.createLinearGradient(cx, cy, cx, cy + ch);
+    cardGrad.addColorStop(0, vfx.bgTop);
+    cardGrad.addColorStop(1, vfx.bgBot);
+    ctx.fillStyle = cardGrad;
+    ctx.beginPath();
+    ctx.roundRect(cx, cy, cw, ch, 14);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Try card background sprite
+    const bgSprite = vfx.cardBgSprite
+      ? getSprite(vfx.cardBgSprite as never)
+      : null;
+    if (bgSprite) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(cx, cy, cw, ch, 14);
+      ctx.clip();
+      ctx.globalAlpha = (data.guardTimer > 0 ? 0.42 : 1) * 0.35;
+      ctx.drawImage(
+        bgSprite.img,
+        0,
+        0,
+        bgSprite.frameW,
+        bgSprite.frameH,
+        cx,
+        cy,
+        cw,
+        ch,
+      );
+      ctx.restore();
+    }
+
+    // Animated rarity particles (RARE/EPIC)
+    if (data.guardTimer <= 0) {
+      const now = performance.now() / 1000;
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(cx, cy, cw, ch, 14);
+      ctx.clip();
+      for (let p = 0; p < vfx.particleCount; p++) {
+        const phase = p * 2.1 + now * 0.8;
+        const px = cx + (Math.sin(phase * 1.3 + p) * 0.5 + 0.5) * cw;
+        const py = cy + ((phase * 0.15 + p * 0.3) % 1) * ch;
+        const pSize = 1.5 + Math.sin(phase * 2) * 0.8;
+        ctx.globalAlpha = 0.35 + Math.sin(phase * 3) * 0.2;
+        ctx.fillStyle = choice.rarityColor;
+        ctx.beginPath();
+        ctx.arc(px, py, pSize, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // Border (rarity glow)
     ctx.strokeStyle =
       data.guardTimer > 0 ? "rgba(255,255,255,0.08)" : choice.rarityColor;
-    ctx.lineWidth = data.guardTimer > 0 ? 1 : 2;
+    ctx.lineWidth = data.guardTimer > 0 ? 1 : vfx.borderWidth;
+    if (data.guardTimer <= 0) {
+      ctx.shadowColor = choice.rarityColor;
+      ctx.shadowBlur = vfx.glowIntensity * 0.7;
+    }
     ctx.beginPath();
-    ctx.roundRect(
-      UPGRADE_CARD.x,
-      y,
-      UPGRADE_CARD.width,
-      UPGRADE_CARD.height,
-      18,
-    );
+    ctx.roundRect(cx, cy, cw, ch, 14);
     ctx.stroke();
+    ctx.shadowBlur = 0;
 
+    // Rarity badge at top
+    const badgeW = cw - 16;
     ctx.fillStyle = choice.rarityColor;
     ctx.beginPath();
-    ctx.roundRect(UPGRADE_CARD.x + 14, y + 10, 74, 18, 9);
+    ctx.roundRect(cx + 8, cy + 10, badgeW, 20, 10);
     ctx.fill();
     ctx.fillStyle = "#090b12";
     ctx.textAlign = "center";
     ctx.font = `800 10px ${UI_FONT}`;
-    ctx.fillText(choice.rarity, UPGRADE_CARD.x + 51, y + 23);
+    ctx.fillText(choice.rarity, cx + cw / 2, cy + 24);
 
-    ctx.fillStyle = "rgba(255,255,255,0.14)";
+    // Kind badge
+    ctx.fillStyle = "rgba(255,255,255,0.12)";
     ctx.beginPath();
-    ctx.roundRect(UPGRADE_CARD.x + 94, y + 10, 68, 18, 9);
+    ctx.roundRect(cx + 8, cy + 36, badgeW, 18, 9);
     ctx.fill();
     ctx.fillStyle = "#f5efe3";
-    ctx.font = `700 10px ${UI_FONT}`;
-    ctx.fillText(choice.kind, UPGRADE_CARD.x + 128, y + 23);
+    ctx.font = `700 9px ${UI_FONT}`;
+    ctx.fillText(choice.kind, cx + cw / 2, cy + 49);
 
+    // Icon glyph (centered, large)
     drawUpgradeGlyph(
       ctx,
       choice.icon,
-      UPGRADE_CARD.x + 42,
-      y + UPGRADE_CARD.height / 2,
-      52,
+      cx + cw / 2,
+      cy + 100,
+      62,
       choice.rarityColor,
     );
 
+    // Title (centered, wrapped if needed)
     ctx.fillStyle = "#f5efe3";
-    ctx.textAlign = "left";
-    ctx.font = `700 16px ${UI_FONT}`;
-    ctx.fillText(choice.title, UPGRADE_CARD.x + 82, y + 44);
-    ctx.font = `600 12px ${UI_FONT}`;
-    ctx.fillStyle = "rgba(255,255,255,0.78)";
-    ctx.fillText(choice.description, UPGRADE_CARD.x + 82, y + 62);
+    ctx.textAlign = "center";
+    ctx.font = `700 14px ${UI_FONT}`;
+    ctx.fillText(choice.title, cx + cw / 2, cy + 150);
 
+    // Description (wrapped text)
+    ctx.font = `500 10px ${UI_FONT}`;
+    ctx.fillStyle = "rgba(255,255,255,0.75)";
+    const descWords = choice.description.split("");
+    const maxCharsPerLine = Math.floor(cw / 10);
+    let line1 = "";
+    let line2 = "";
+    for (const char of descWords) {
+      if (line1.length < maxCharsPerLine) line1 += char;
+      else line2 += char;
+    }
+    ctx.fillText(line1, cx + cw / 2, cy + 172);
+    if (line2) ctx.fillText(line2, cx + cw / 2, cy + 186);
+
+    // Current → Next stat
     if (choice.current && choice.next) {
-      ctx.fillStyle = "rgba(216, 180, 94, 0.2)";
+      const statY = cy + 210;
+      ctx.fillStyle = "rgba(216, 180, 94, 0.18)";
       ctx.beginPath();
-      ctx.roundRect(UPGRADE_CARD.x + 82, y + 74, 120, 16, 7);
+      ctx.roundRect(cx + 6, statY, cw - 12, 20, 7);
       ctx.fill();
       ctx.fillStyle = "rgba(255,255,255,0.88)";
-      ctx.font = `700 10px ${UI_FONT}`;
+      ctx.font = `700 9px ${UI_FONT}`;
       ctx.fillText(
-        `${choice.current}  →  ${choice.next}`,
-        UPGRADE_CARD.x + 92,
-        y + 86,
+        `${choice.current} → ${choice.next}`,
+        cx + cw / 2,
+        statY + 14,
       );
     }
 
+    // Kicker text
     if (choice.kicker) {
-      ctx.fillStyle = "rgba(255,255,255,0.12)";
+      const kickY = choice.current ? cy + 238 : cy + 210;
+      ctx.fillStyle = "rgba(255,255,255,0.1)";
       ctx.beginPath();
-      ctx.roundRect(UPGRADE_CARD.x + 214, y + 74, 128, 16, 7);
+      ctx.roundRect(cx + 6, kickY, cw - 12, 20, 7);
       ctx.fill();
       ctx.fillStyle = choice.rarityColor;
-      ctx.font = `600 10px ${UI_FONT}`;
-      ctx.fillText(choice.kicker, UPGRADE_CARD.x + 224, y + 86);
+      ctx.font = `600 8px ${UI_FONT}`;
+      // Wrap kicker text
+      const kickChars = choice.kicker.split("");
+      const kickMax = Math.floor((cw - 12) / 8);
+      let k1 = "",
+        k2 = "";
+      for (const c of kickChars) {
+        if (k1.length < kickMax) k1 += c;
+        else k2 += c;
+      }
+      ctx.fillText(k1, cx + cw / 2, kickY + 13);
+      if (k2) ctx.fillText(k2, cx + cw / 2, kickY + 24);
+    }
+
+    // EPIC shimmer line at bottom
+    if (choice.rarity === "EPIC" && data.guardTimer <= 0) {
+      const now = performance.now() / 1000;
+      const shimmerX = cx + ((now * 0.5) % 1) * cw;
+      const shimGrad = ctx.createLinearGradient(
+        shimmerX - 20,
+        0,
+        shimmerX + 20,
+        0,
+      );
+      shimGrad.addColorStop(0, "rgba(183,130,255,0)");
+      shimGrad.addColorStop(0.5, "rgba(183,130,255,0.3)");
+      shimGrad.addColorStop(1, "rgba(183,130,255,0)");
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(cx, cy, cw, ch, 14);
+      ctx.clip();
+      ctx.fillStyle = shimGrad;
+      ctx.fillRect(cx, cy + ch - 4, cw, 4);
+      ctx.restore();
     }
   });
 

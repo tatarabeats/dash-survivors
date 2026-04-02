@@ -18,6 +18,7 @@ import {
   drawHud,
   drawLightning,
   drawOrb,
+  drawPaperShred,
   drawParticle,
   drawPlayer,
   drawProjectile,
@@ -166,6 +167,20 @@ type Particle = {
   life: number;
   maxLife: number;
 };
+type PaperShred = {
+  id: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  w: number;
+  h: number;
+  rot: number;
+  rotVel: number;
+  life: number;
+  maxLife: number;
+  color: string;
+};
 type Skill = { key: SkillKey; level: number; timer: number };
 type Upgrade = {
   id: string;
@@ -187,6 +202,7 @@ type Afterimage = {
   angle: number;
   life: number;
   maxLife: number;
+  isShadow?: boolean;
 };
 type Shockwave = {
   id: number;
@@ -344,6 +360,8 @@ export class NinjaSurvivors {
   private slashes: Slash[] = [];
   private bolts: Bolt[] = [];
   private particles: Particle[] = [];
+  private paperShreds: PaperShred[] = [];
+  private hitStopTimer = 0;
   private afterimages: Afterimage[] = [];
   private shockwaves: Shockwave[] = [];
   private skills: Skill[] = [];
@@ -486,13 +504,13 @@ export class NinjaSurvivors {
         return true;
       }
       for (let i = 0; i < this.upgrades.length; i += 1) {
-        const top =
-          UPGRADE_CARD.y + i * (UPGRADE_CARD.height + UPGRADE_CARD.gap);
+        const left =
+          UPGRADE_CARD.x + i * (UPGRADE_CARD.width + UPGRADE_CARD.gap);
         if (
-          x >= UPGRADE_CARD.x &&
-          x <= UPGRADE_CARD.x + UPGRADE_CARD.width &&
-          y >= top &&
-          y <= top + UPGRADE_CARD.height
+          x >= left &&
+          x <= left + UPGRADE_CARD.width &&
+          y >= UPGRADE_CARD.y &&
+          y <= UPGRADE_CARD.y + UPGRADE_CARD.height
         ) {
           this.pickUpgrade(i);
           return true;
@@ -559,6 +577,19 @@ export class NinjaSurvivors {
       return;
     }
     this.freeze = Math.max(0, this.freeze - dt);
+    this.hitStopTimer = Math.max(0, this.hitStopTimer - dt);
+    // Update paper shreds
+    const shredDt = this.hitStopTimer > 0 ? dt * 0.05 : dt;
+    for (let i = this.paperShreds.length - 1; i >= 0; i--) {
+      const s = this.paperShreds[i];
+      s.x += s.vx * shredDt;
+      s.y += s.vy * shredDt;
+      s.vy += 180 * shredDt; // gravity
+      s.vx *= 1 - 2 * shredDt;
+      s.rot += s.rotVel * shredDt;
+      s.life -= shredDt;
+      if (s.life <= 0) this.paperShreds.splice(i, 1);
+    }
     // Update charge level when aiming
     if (this.aimStart && !this.dash) {
       this.chargeLevel = clamp(
@@ -611,17 +642,33 @@ export class NinjaSurvivors {
       life: 0.16,
       maxLife: 0.16,
     });
+    // Main dash slash — larger, more dramatic
+    const dashAngle = Math.atan2(this.dash.dir.y, this.dash.dir.x);
     this.slashes.push({
       id: this.next(),
-      x: this.player.x - this.dash.dir.x * 18,
-      y: this.player.y - this.dash.dir.y * 18,
-      angle: Math.atan2(this.dash.dir.y, this.dash.dir.x),
-      radius: 20 + Math.random() * 8,
-      span: 0.55,
-      color: "rgba(207,46,47,0.85)",
-      life: 0.12,
-      maxLife: 0.12,
+      x: this.player.x - this.dash.dir.x * 14,
+      y: this.player.y - this.dash.dir.y * 14,
+      angle: dashAngle + (Math.random() - 0.5) * 0.3,
+      radius: 32 + Math.random() * 12,
+      span: 0.75,
+      color: "rgba(207,46,47,0.9)",
+      life: 0.16,
+      maxLife: 0.16,
     });
+    // Alternating cross-slash every other frame for X-pattern
+    if (Math.random() > 0.5) {
+      this.slashes.push({
+        id: this.next(),
+        x: this.player.x - this.dash.dir.x * 8,
+        y: this.player.y - this.dash.dir.y * 8,
+        angle: dashAngle + Math.PI * 0.6 + (Math.random() - 0.5) * 0.2,
+        radius: 22 + Math.random() * 8,
+        span: 0.5,
+        color: "rgba(245,239,227,0.6)",
+        life: 0.1,
+        maxLife: 0.1,
+      });
+    }
     const fireLv = this.skillLevel("fire");
     if (fireLv > 0) {
       this.fireTrailTimer -= dt;
@@ -799,11 +846,12 @@ export class NinjaSurvivors {
   private castShadow(level: number) {
     if (!this.enemies.length) return;
     this.audio.playSkill("shadow");
+    this.freeze = 0.04; // brief time-freeze for impact
     const slashes = 1 + Math.floor((level + 1) / 2);
     for (let i = 0; i < slashes; i += 1) {
       const t = this.enemies[Math.floor(Math.random() * this.enemies.length)];
       const a = Math.random() * Math.PI * 2;
-      const reach = 86 + level * 18;
+      const reach = 100 + level * 22;
       const start = {
         x: t.x - Math.cos(a) * reach,
         y: t.y - Math.sin(a) * reach,
@@ -812,70 +860,94 @@ export class NinjaSurvivors {
         x: t.x + Math.cos(a) * reach,
         y: t.y + Math.sin(a) * reach,
       };
-      // Shadow clone afterimage
+      // Shadow clone — ninja sprite copy at start position
       this.afterimages.push({
         id: this.next(),
         x: start.x,
         y: start.y,
         angle: a,
+        life: 0.55,
+        maxLife: 0.55,
+        isShadow: true,
+      });
+      // Second clone at end for X-slash visual
+      this.afterimages.push({
+        id: this.next(),
+        x: end.x,
+        y: end.y,
+        angle: a + Math.PI,
         life: 0.4,
         maxLife: 0.4,
+        isShadow: true,
       });
-      // Primary + secondary slash arcs
+      // Primary slash — bigger, wider arc
       this.slashes.push({
         id: this.next(),
         x: t.x,
         y: t.y,
         angle: a,
-        radius: reach * 0.7,
-        span: 1.1,
-        color: "rgba(180,160,220,0.9)",
-        life: 0.32,
-        maxLife: 0.32,
+        radius: reach * 0.85,
+        span: 1.4,
+        color: "rgba(180,160,220,0.95)",
+        life: 0.38,
+        maxLife: 0.38,
       });
+      // Cross-slash from opposite angle
       this.slashes.push({
         id: this.next(),
         x: t.x,
         y: t.y,
-        angle: a + Math.PI,
-        radius: reach * 0.5,
-        span: 0.7,
-        color: "rgba(140,120,190,0.65)",
-        life: 0.25,
-        maxLife: 0.25,
+        angle: a + Math.PI * 0.7,
+        radius: reach * 0.65,
+        span: 1.0,
+        color: "rgba(140,120,190,0.75)",
+        life: 0.3,
+        maxLife: 0.3,
       });
-      // Shockwave at impact
+      // Third slash arc for visual density
+      this.slashes.push({
+        id: this.next(),
+        x: t.x,
+        y: t.y,
+        angle: a - Math.PI * 0.4,
+        radius: reach * 0.5,
+        span: 0.8,
+        color: "rgba(200,180,240,0.6)",
+        life: 0.22,
+        maxLife: 0.22,
+      });
+      // Shockwave at impact — bigger
       this.shockwaves.push({
         id: this.next(),
         x: t.x,
         y: t.y,
-        radius: 12,
-        growth: 120,
-        color: "rgba(163,155,189,0.7)",
-        life: 0.2,
-        maxLife: 0.2,
+        radius: 16,
+        growth: 180,
+        color: "rgba(163,155,189,0.8)",
+        life: 0.25,
+        maxLife: 0.25,
       });
       for (const e of this.enemies)
-        if (segDist(e, start, end) <= e.radius + 14) {
+        if (segDist(e, start, end) <= e.radius + 18) {
           e.hp -= 28 + level * 18;
           e.hit = 0.18;
         }
-      this.impact(t.x, t.y, "#b0a3ce", 8, 170);
-      // Trail particles
-      for (let p = 0; p < 5; p++) {
-        const pt = p / 4;
+      this.impact(t.x, t.y, "#b0a3ce", 12, 200);
+      // Trail particles — more and larger
+      for (let p = 0; p < 8; p++) {
+        const pt = p / 7;
         const px = lerp(start.x, end.x, pt);
         const py = lerp(start.y, end.y, pt);
-        const life = rand(0.15, 0.3);
+        const life = rand(0.2, 0.4);
         this.particles.push({
           id: this.next(),
           x: px,
           y: py,
-          vx: rand(-30, 30),
-          vy: rand(-30, 30),
-          size: rand(2, 4),
+          vx: rand(-50, 50),
+          vy: rand(-50, 50),
+          size: rand(2.5, 5),
           color: "#c4b8e0",
-          glow: 8,
+          glow: 12,
           life,
           maxLife: life,
         });
@@ -1127,6 +1199,32 @@ export class NinjaSurvivors {
         e.kind === "boss" ? undefined : this.rollScrollKind(),
       );
     this.audio.playKill();
+    // Hit stop — brief time freeze
+    this.hitStopTimer = Math.max(
+      this.hitStopTimer,
+      e.kind === "boss" ? 0.12 : e.elite ? 0.07 : 0.04,
+    );
+    // Paper shred burst — origami aesthetic death effect
+    const shredColors = ["#1a1a1a", "#f5f0e8", "#d4b86a", "#8b0000", "#2a2a2a"];
+    const shredCount = e.kind === "boss" ? 20 : e.elite ? 12 : 7;
+    for (let s = 0; s < shredCount; s++) {
+      const a = (s / shredCount) * Math.PI * 2 + Math.random() * 0.8;
+      const spd = 60 + Math.random() * 120;
+      this.paperShreds.push({
+        id: this.next(),
+        x: e.x + rand(-8, 8),
+        y: e.y + rand(-8, 8),
+        vx: Math.cos(a) * spd,
+        vy: Math.sin(a) * spd - 40,
+        w: 4 + Math.random() * 10,
+        h: 3 + Math.random() * 6,
+        rot: Math.random() * Math.PI * 2,
+        rotVel: (Math.random() - 0.5) * 12,
+        life: 0.5 + Math.random() * 0.4,
+        maxLife: 0.5 + Math.random() * 0.4,
+        color: shredColors[Math.floor(Math.random() * shredColors.length)],
+      });
+    }
     // Combo
     this.combo += 1;
     this.comboTimer = 2.0;
@@ -2031,6 +2129,8 @@ export class NinjaSurvivors {
     this.slashes = [];
     this.bolts = [];
     this.particles = [];
+    this.paperShreds = [];
+    this.hitStopTimer = 0;
     this.afterimages = [];
     this.shockwaves = [];
     this.skills = [];
@@ -2281,6 +2381,7 @@ export class NinjaSurvivors {
       this.time,
     );
     for (const p of this.particles) drawParticle(this.ctx, p);
+    for (const s of this.paperShreds) drawPaperShred(this.ctx, s);
     // Damage numbers (in world space)
     for (const d of this.damageNumbers) {
       const alpha = clamp(d.life / d.maxLife, 0, 1);

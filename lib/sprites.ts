@@ -18,41 +18,46 @@ export type AnimState = {
 
 // All sprite definitions
 const SPRITE_DEFS = {
-  // Player - AI generated, 3 poses (rembg processed)
+  // Player - origami washi style (preferred)
   ninjaIdle: {
-    path: "/sprites/generated/ninja_idle.png",
+    path: "/sprites/generated/ninja_idle_ori.png",
     frameW: 1024,
     frameH: 1024,
   },
   ninjaReady: {
-    path: "/sprites/generated/ninja_ready.png",
+    path: "/sprites/generated/ninja_ready_ori.png",
     frameW: 1024,
     frameH: 1024,
   },
   ninjaAttack: {
-    path: "/sprites/generated/ninja_slash.png",
+    path: "/sprites/generated/ninja_slash_ori.png",
     frameW: 1024,
     frameH: 1024,
   },
-  // Enemies - idle poses (rembg processed)
-  oni: { path: "/sprites/generated/oni_v2.png", frameW: 1024, frameH: 1024 },
+  ninjaRun: {
+    path: "/sprites/generated/ninja_run.png",
+    frameW: 1024,
+    frameH: 1024,
+  },
+  // Enemies - origami washi style (preferred)
+  oni: { path: "/sprites/generated/oni_ori.png", frameW: 1024, frameH: 1024 },
   kappa: {
-    path: "/sprites/generated/kappa_v2.png",
+    path: "/sprites/generated/kappa_ori.png",
     frameW: 1024,
     frameH: 1024,
   },
   tengu: {
-    path: "/sprites/generated/tengu_v2.png",
+    path: "/sprites/generated/tengu_ori.png",
     frameW: 1024,
     frameH: 1024,
   },
   yurei: {
-    path: "/sprites/generated/yurei_v2.png",
+    path: "/sprites/generated/yurei_ori.png",
     frameW: 1024,
     frameH: 1024,
   },
   bossOni: {
-    path: "/sprites/generated/oni_v2.png",
+    path: "/sprites/generated/oni_boss_ori.png",
     frameW: 1024,
     frameH: 1024,
   },
@@ -87,6 +92,22 @@ const SPRITE_DEFS = {
     path: "/sprites/generated/bg_topdown_castle.png",
     frameW: 1024,
     frameH: 1024,
+  },
+  // Card backgrounds (ComfyUI generated)
+  cardCommon: {
+    path: "/sprites/generated/card_common.png",
+    frameW: 512,
+    frameH: 768,
+  },
+  cardRare: {
+    path: "/sprites/generated/card_rare.png",
+    frameW: 512,
+    frameH: 768,
+  },
+  cardEpic: {
+    path: "/sprites/generated/card_epic.png",
+    frameW: 512,
+    frameH: 768,
   },
   // Items (keep existing)
   shuriken: { path: "/sprites/shuriken.png", frameW: 48, frameH: 48 },
