@@ -36,7 +36,8 @@ export const GAME_WIDTH = CANVAS_WIDTH;
 export const GAME_HEIGHT = CANVAS_HEIGHT;
 
 type V = { x: number; y: number };
-type EnemyKind = "oni" | "kappa" | "tengu" | "yurei" | "boss";
+type WeaponType = "kusarigama" | "yari" | "katana" | "shuriken";
+type EnemyKind = "samurai" | "shinobi" | "ronin" | "yurei" | "boss";
 type SkillKey = "lightning" | "fire" | "shadow" | "wind" | "kunai";
 type Player = {
   x: number;
@@ -232,15 +233,75 @@ type DamageNumber = {
   crit: boolean;
 };
 
-const PLAYER_RADIUS = 15;
+const PLAYER_RADIUS = 24;
 const DASH_DURATION = 0.13;
 const DASH_COOLDOWN = 0.19;
 const DASH_PULL_MIN = 22;
 const WAVE_SECONDS = 18;
 const UPGRADE_GUARD = 0.7;
-const MAX_ENEMIES = 120;
+const MAX_ENEMIES = 80;
 const BASE_XP = 14;
 const ULTIMATE_MAX = 100;
+
+const WEAPON_DEF: Record<
+  WeaponType,
+  {
+    name: string;
+    icon: string;
+    dashDamageMul: number;
+    dashDistMul: number;
+    slashSpanMul: number;
+    slashRadiusMul: number;
+    shurikenStart: number;
+    desc: string;
+    color: string;
+  }
+> = {
+  kusarigama: {
+    name: "鎖鎌",
+    icon: "⛓️",
+    dashDamageMul: 0.85,
+    dashDistMul: 1.25,
+    slashSpanMul: 1.5,
+    slashRadiusMul: 1.3,
+    shurikenStart: 2,
+    desc: "広範囲の回転攻撃",
+    color: "#8b7355",
+  },
+  yari: {
+    name: "槍",
+    icon: "🔱",
+    dashDamageMul: 1.2,
+    dashDistMul: 1.0,
+    slashSpanMul: 0.5,
+    slashRadiusMul: 1.8,
+    shurikenStart: 1,
+    desc: "長射程の突き攻撃",
+    color: "#c4a35a",
+  },
+  katana: {
+    name: "刀",
+    icon: "⚔️",
+    dashDamageMul: 1.0,
+    dashDistMul: 1.0,
+    slashSpanMul: 1.0,
+    slashRadiusMul: 1.0,
+    shurikenStart: 2,
+    desc: "バランスの取れた斬撃",
+    color: "#e8e0d0",
+  },
+  shuriken: {
+    name: "手裏剣",
+    icon: "🌟",
+    dashDamageMul: 0.7,
+    dashDistMul: 0.9,
+    slashSpanMul: 0.8,
+    slashRadiusMul: 0.8,
+    shurikenStart: 4,
+    desc: "大量の遠距離自動攻撃",
+    color: "#a0a8b8",
+  },
+};
 
 const ENEMY_DEF: Record<
   EnemyKind,
@@ -255,42 +316,42 @@ const ENEMY_DEF: Record<
     secondary: string;
   }
 > = {
-  oni: {
+  samurai: {
     cost: 1,
-    hp: 40,
-    speed: 42,
-    damage: 18,
-    radius: 16,
+    hp: 50,
+    speed: 36,
+    damage: 20,
+    radius: 22,
     xp: 1,
-    primary: "#cf2e2f",
-    secondary: "#5d1115",
+    primary: "#8b2252",
+    secondary: "#4a1028",
   },
-  kappa: {
+  shinobi: {
     cost: 1.1,
-    hp: 28,
-    speed: 72,
-    damage: 13,
-    radius: 13,
-    xp: 1,
-    primary: "#5cab56",
-    secondary: "#244e2a",
-  },
-  tengu: {
-    cost: 1.5,
-    hp: 60,
-    speed: 38,
-    damage: 22,
+    hp: 30,
+    speed: 68,
+    damage: 14,
     radius: 18,
+    xp: 1,
+    primary: "#4a4a5a",
+    secondary: "#2a2a38",
+  },
+  ronin: {
+    cost: 1.5,
+    hp: 55,
+    speed: 40,
+    damage: 22,
+    radius: 24,
     xp: 2,
-    primary: "#b96a31",
-    secondary: "#5c2416",
+    primary: "#5c7a4a",
+    secondary: "#3a4e2a",
   },
   yurei: {
     cost: 0.95,
     hp: 24,
     speed: 54,
     damage: 11,
-    radius: 14,
+    radius: 20,
     xp: 1,
     primary: "#d9dde4",
     secondary: "#76808c",
@@ -300,10 +361,10 @@ const ENEMY_DEF: Record<
     hp: 780,
     speed: 24,
     damage: 28,
-    radius: 34,
+    radius: 46,
     xp: 28,
-    primary: "#e2473e",
-    secondary: "#611417",
+    primary: "#8b2252",
+    secondary: "#4a1028",
   },
 };
 const SKILL_DEF: Record<
@@ -390,6 +451,11 @@ export class NinjaSurvivors {
   private combo = 0;
   private comboTimer = 0;
   private titleScreen = true;
+  private weaponSelect = false;
+  private selectedWeapon: WeaponType = "katana";
+  private punchX = 0;
+  private punchY = 0;
+  private levelUpRing = 0;
   private bestTime = 0;
   private bestKills = 0;
   private bestWave = 0;
@@ -419,9 +485,15 @@ export class NinjaSurvivors {
 
   onTouchStart(x: number, y: number) {
     this.resumeAudio();
-    // Title screen: tap to start
+    // Title screen: tap to go to weapon select
     if (this.titleScreen) {
       this.titleScreen = false;
+      this.weaponSelect = true;
+      return;
+    }
+    // Weapon selection screen
+    if (this.weaponSelect) {
+      this.handleWeaponTap(x, y);
       return;
     }
     // Pause button: top-right 50x50 area
@@ -521,6 +593,7 @@ export class NinjaSurvivors {
   }
 
   private makePlayer(): Player {
+    const w = WEAPON_DEF[this.selectedWeapon];
     return {
       x: 0,
       y: 0,
@@ -532,15 +605,40 @@ export class NinjaSurvivors {
       killCount: 0,
       invulnerable: 0,
       dashCooldown: 0,
-      dashDamage: 38,
-      dashDistance: 138,
-      magnetRadius: 72,
-      shurikenCount: 2,
+      dashDamage: Math.round(38 * w.dashDamageMul),
+      dashDistance: Math.round(138 * w.dashDistMul),
+      magnetRadius: 82,
+      shurikenCount: w.shurikenStart,
       shurikenDamage: 12,
-      shurikenRadius: 54,
+      shurikenRadius: 72,
       rerolls: 2,
       ultimate: 0,
     };
+  }
+
+  private handleWeaponTap(x: number, y: number) {
+    const weapons: WeaponType[] = ["kusarigama", "yari", "katana", "shuriken"];
+    const cardW = 160;
+    const cardH = 200;
+    const gap = 12;
+    const totalW = cardW * 2 + gap;
+    const totalH = cardH * 2 + gap;
+    const startX = (CANVAS_WIDTH - totalW) / 2;
+    const startY = (CANVAS_HEIGHT - totalH) / 2 + 30;
+
+    for (let i = 0; i < 4; i++) {
+      const col = i % 2;
+      const row = Math.floor(i / 2);
+      const cx = startX + col * (cardW + gap);
+      const cy = startY + row * (cardH + gap);
+      if (x >= cx && x <= cx + cardW && y >= cy && y <= cy + cardH) {
+        this.selectedWeapon = weapons[i];
+        this.weaponSelect = false;
+        this.player = this.makePlayer();
+        this.audio.playLevelUp();
+        return;
+      }
+    }
   }
 
   private loop(t: number) {
@@ -553,10 +651,17 @@ export class NinjaSurvivors {
   }
 
   private update(dt: number) {
-    if (this.titleScreen) {
+    if (this.titleScreen || this.weaponSelect) {
       this.updateFx(dt);
       return;
     }
+    // Screen punch decay
+    this.punchX *= 1 - dt * 14;
+    this.punchY *= 1 - dt * 14;
+    if (Math.abs(this.punchX) < 0.1) this.punchX = 0;
+    if (Math.abs(this.punchY) < 0.1) this.punchY = 0;
+    // Level up ring decay
+    this.levelUpRing = Math.max(0, this.levelUpRing - dt * 2.5);
     this.audio.setIntensity(
       clamp(
         (this.enemies.length / 42 +
@@ -1104,11 +1209,11 @@ export class NinjaSurvivors {
       const dir = { x: toPlayer.x / d, y: toPlayer.y / d };
       const side = { x: -dir.y, y: dir.x };
       let move = { x: dir.x, y: dir.y };
-      if (e.kind === "kappa") {
+      if (e.kind === "shinobi") {
         const sway = Math.sin(this.time * 6 + e.seed) * 0.55;
         move.x += side.x * sway;
         move.y += side.y * sway;
-      } else if (e.kind === "tengu") {
+      } else if (e.kind === "ronin") {
         const bias = d < 160 ? -0.8 : 0.6;
         const sway = Math.sin(this.time * 3 + e.seed) * 0.4;
         move.x += dir.x * bias + side.x * sway;
@@ -1152,6 +1257,13 @@ export class NinjaSurvivors {
       1,
       this.trauma + (e.kind === "boss" ? 0.24 : e.elite ? 0.14 : 0.08),
     );
+    // Screen punch — camera kicks in direction of kill
+    const dx = e.x - this.player.x;
+    const dy = e.y - this.player.y;
+    const punchDist = Math.hypot(dx, dy) || 1;
+    const punchStr = e.kind === "boss" ? 12 : e.elite ? 8 : 4;
+    this.punchX += (dx / punchDist) * punchStr;
+    this.punchY += (dy / punchDist) * punchStr;
     this.screenFlash = Math.max(
       this.screenFlash,
       e.kind === "boss" ? 0.22 : e.elite ? 0.1 : 0.06,
@@ -1274,7 +1386,8 @@ export class NinjaSurvivors {
           this.queuedLevelUps += 1;
           if (this.player.level % 5 === 0) this.player.rerolls += 1;
           this.audio.playLevelUp();
-          this.screenFlash = Math.max(this.screenFlash, 0.18);
+          this.screenFlash = Math.max(this.screenFlash, 0.25);
+          this.levelUpRing = 1;
           this.shockwaves.push({
             id: this.next(),
             x: this.player.x,
@@ -1395,9 +1508,9 @@ export class NinjaSurvivors {
       for (let i = 0; i < summons; i += 1) {
         const summonKind: EnemyKind =
           rank >= 5 && Math.random() < 0.35
-            ? "tengu"
+            ? "ronin"
             : Math.random() < 0.45
-              ? "oni"
+              ? "samurai"
               : "yurei";
         if (this.enemies.length < MAX_ENEMIES) this.spawnEnemy(summonKind);
       }
@@ -1626,7 +1739,7 @@ export class NinjaSurvivors {
       kind !== "boss" &&
       this.time > 30 &&
       Math.random() < eliteChance &&
-      (kind === "oni" || kind === "tengu" || kind === "kappa");
+      (kind === "samurai" || kind === "ronin" || kind === "shinobi");
     const hpScale =
       kind === "boss"
         ? 1 + this.wave * 0.22
@@ -1669,16 +1782,16 @@ export class NinjaSurvivors {
     const add = (kind: EnemyKind, weight: number) => {
       if (ENEMY_DEF[kind].cost <= budget + 0.2) c.push({ kind, weight });
     };
-    add("oni", 5);
+    add("samurai", 5);
     if (this.time > 12) add("yurei", 3.5);
-    if (this.time > 24) add("kappa", 3.2);
-    if (this.time > 42) add("tengu", 2.8);
+    if (this.time > 24) add("shinobi", 3.2);
+    if (this.time > 42) add("ronin", 2.8);
     let roll = Math.random() * c.reduce((s, x) => s + x.weight, 0);
     for (const item of c) {
       roll -= item.weight;
       if (roll <= 0) return item.kind;
     }
-    return "oni";
+    return "samurai";
   }
 
   private rollUpgrades() {
@@ -2164,6 +2277,10 @@ export class NinjaSurvivors {
     this.damageNumbers = [];
     this.combo = 0;
     this.comboTimer = 0;
+    this.punchX = 0;
+    this.punchY = 0;
+    this.levelUpRing = 0;
+    this.weaponSelect = true;
     this.openingParticles();
   }
 
@@ -2302,8 +2419,10 @@ export class NinjaSurvivors {
 
   private render() {
     const shake = this.trauma * this.trauma * 18;
-    const camX = this.player.x - CANVAS_WIDTH / 2 + rand(-shake, shake);
-    const camY = this.player.y - CANVAS_HEIGHT / 2 + rand(-shake, shake);
+    const camX =
+      this.player.x - CANVAS_WIDTH / 2 + rand(-shake, shake) + this.punchX;
+    const camY =
+      this.player.y - CANVAS_HEIGHT / 2 + rand(-shake, shake) + this.punchY;
     this.ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     drawBackground(
@@ -2593,6 +2712,108 @@ export class NinjaSurvivors {
           CANVAS_HEIGHT / 2 + 80,
         );
       }
+      this.ctx.restore();
+    }
+    // Weapon selection screen
+    if (this.weaponSelect) {
+      this.ctx.save();
+      this.ctx.fillStyle = "rgba(3,4,8,0.92)";
+      this.ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      // Header
+      this.ctx.fillStyle = "#f1ddbb";
+      this.ctx.textAlign = "center";
+      this.ctx.font = '800 28px "Shippori Mincho", "Yu Mincho", serif';
+      this.ctx.shadowColor = "rgba(207,46,47,0.5)";
+      this.ctx.shadowBlur = 18;
+      this.ctx.fillText("武器を選べ", CANVAS_WIDTH / 2, 120);
+      this.ctx.shadowBlur = 0;
+      // 2x2 grid of weapon cards
+      const weapons: WeaponType[] = [
+        "kusarigama",
+        "yari",
+        "katana",
+        "shuriken",
+      ];
+      const cardW = 160;
+      const cardH = 200;
+      const gap = 12;
+      const totalW = cardW * 2 + gap;
+      const totalH = cardH * 2 + gap;
+      const startX = (CANVAS_WIDTH - totalW) / 2;
+      const startY = (CANVAS_HEIGHT - totalH) / 2 + 30;
+      for (let i = 0; i < 4; i++) {
+        const col = i % 2;
+        const row = Math.floor(i / 2);
+        const cx = startX + col * (cardW + gap);
+        const cy = startY + row * (cardH + gap);
+        const w = WEAPON_DEF[weapons[i]];
+        // Card bg
+        const grad = this.ctx.createLinearGradient(cx, cy, cx, cy + cardH);
+        grad.addColorStop(0, "rgba(30,28,38,0.95)");
+        grad.addColorStop(1, "rgba(18,16,24,0.95)");
+        this.ctx.fillStyle = grad;
+        this.ctx.beginPath();
+        this.ctx.roundRect(cx, cy, cardW, cardH, 12);
+        this.ctx.fill();
+        // Border
+        this.ctx.strokeStyle = w.color;
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.roundRect(cx, cy, cardW, cardH, 12);
+        this.ctx.stroke();
+        // Icon
+        this.ctx.font = "42px serif";
+        this.ctx.fillText(w.icon, cx + cardW / 2, cy + 60);
+        // Name
+        this.ctx.fillStyle = "#f1ddbb";
+        this.ctx.font = '800 22px "Shippori Mincho", serif';
+        this.ctx.fillText(w.name, cx + cardW / 2, cy + 108);
+        // Description
+        this.ctx.fillStyle = "rgba(255,255,255,0.65)";
+        this.ctx.font = '500 12px "Noto Sans JP", sans-serif';
+        this.ctx.fillText(w.desc, cx + cardW / 2, cy + 140);
+        // Damage stat
+        const dmgLabel =
+          w.dashDamageMul >= 1.1
+            ? "攻撃 ▲"
+            : w.dashDamageMul <= 0.85
+              ? "攻撃 ▼"
+              : "攻撃 ─";
+        const rangeLabel =
+          w.slashRadiusMul >= 1.3
+            ? "射程 ▲"
+            : w.slashRadiusMul <= 0.85
+              ? "射程 ▼"
+              : "射程 ─";
+        this.ctx.fillStyle = "rgba(216,180,94,0.7)";
+        this.ctx.font = '500 11px "Noto Sans JP", sans-serif';
+        this.ctx.fillText(
+          `${dmgLabel}  ${rangeLabel}`,
+          cx + cardW / 2,
+          cy + 170,
+        );
+      }
+      this.ctx.restore();
+    }
+    // Level-up ring effect
+    if (this.levelUpRing > 0) {
+      this.ctx.save();
+      const ringProgress = 1 - this.levelUpRing;
+      const ringRadius = 30 + ringProgress * 180;
+      const ringAlpha = this.levelUpRing * 0.8;
+      this.ctx.strokeStyle = `rgba(245,213,126,${ringAlpha})`;
+      this.ctx.lineWidth = 3 + this.levelUpRing * 4;
+      this.ctx.shadowColor = "#f5d57e";
+      this.ctx.shadowBlur = 20;
+      this.ctx.beginPath();
+      this.ctx.arc(
+        CANVAS_WIDTH / 2,
+        CANVAS_HEIGHT / 2,
+        ringRadius,
+        0,
+        Math.PI * 2,
+      );
+      this.ctx.stroke();
       this.ctx.restore();
     }
   }

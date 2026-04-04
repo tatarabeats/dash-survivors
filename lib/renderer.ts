@@ -104,8 +104,8 @@ export function drawBackground(
       CANVAS_WIDTH,
       CANVAS_HEIGHT,
     );
-    // Dark overlay for readability
-    ctx.fillStyle = `rgba(3,4,8,${0.35 + danger * 0.005})`;
+    // Light overlay for readability (much brighter than before)
+    ctx.fillStyle = `rgba(3,4,8,${0.1 + danger * 0.003})`;
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     // Danger red tint
     if (danger > 3) {
@@ -114,19 +114,19 @@ export function drawBackground(
     }
     return;
   }
-  // Fallback: procedural background
+  // Fallback: procedural background (brighter, warmer)
   const bg = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
-  bg.addColorStop(0, "#06070d");
-  bg.addColorStop(0.42, "#0b0d16");
-  bg.addColorStop(1, "#17070a");
+  bg.addColorStop(0, "#1a2838");
+  bg.addColorStop(0.42, "#1e2a36");
+  bg.addColorStop(1, "#2d2218");
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
   const moonX = CANVAS_WIDTH * 0.74;
   const moonY = 112;
   const moon = ctx.createRadialGradient(moonX, moonY, 0, moonX, moonY, 88);
-  moon.addColorStop(0, "rgba(255, 249, 224, 0.92)");
-  moon.addColorStop(0.58, "rgba(216, 190, 132, 0.24)");
+  moon.addColorStop(0, "rgba(255, 249, 224, 1.0)");
+  moon.addColorStop(0.58, "rgba(216, 190, 132, 0.45)");
   moon.addColorStop(1, "rgba(0, 0, 0, 0)");
   ctx.fillStyle = moon;
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -151,13 +151,7 @@ export function drawBackground(
 
   const seigaihaOffset = (cameraX * 0.18 + time * 8) % 54;
   for (let band = 0; band < 5; band += 1) {
-    drawWaveBand(
-      ctx,
-      CANVAS_HEIGHT - 38 - band * 32,
-      28,
-      0.022,
-      seigaihaOffset,
-    );
+    drawWaveBand(ctx, CANVAS_HEIGHT - 38 - band * 32, 28, 0.06, seigaihaOffset);
   }
 
   const redFog = ctx.createRadialGradient(
@@ -188,7 +182,7 @@ export function drawBackground(
       const width = 4 + layer * 1.5 + seed * 2;
 
       ctx.strokeStyle =
-        layer === 2 ? "rgba(14, 22, 18, 0.9)" : "rgba(18, 34, 24, 0.75)";
+        layer === 2 ? "rgba(34, 62, 38, 0.85)" : "rgba(48, 82, 54, 0.70)";
       ctx.lineWidth = width;
       ctx.lineCap = "round";
       ctx.beginPath();
@@ -616,7 +610,7 @@ export function drawPlayer(
     ? getSprite("ninjaAttack") || getSprite("ninjaRun")
     : getSprite("ninjaIdle");
   if (ninjaSprite) {
-    const size = player.radius * 4.0;
+    const size = player.radius * 3.5;
     const flipX = dashDir ? dashDir.x < 0 : false;
     // Breathing/bobbing animation — stronger bob when idle
     const bob = isDashing ? 0 : Math.sin(time * 2.8) * 3;
@@ -846,7 +840,7 @@ export function drawAfterimage(
 export function drawEnemy(
   ctx: CanvasRenderingContext2D,
   enemy: {
-    kind: "oni" | "kappa" | "tengu" | "yurei" | "boss";
+    kind: "samurai" | "shinobi" | "ronin" | "yurei" | "boss";
     x: number;
     y: number;
     radius: number;
@@ -864,18 +858,18 @@ export function drawEnemy(
 
   // Try sprite rendering — idle + attack pose switching
   const idleMap: Record<string, string> = {
-    oni: "oni",
-    kappa: "kappa",
-    tengu: "tengu",
+    samurai: "samurai",
+    shinobi: "shinobi",
+    ronin: "ronin",
     yurei: "yurei",
-    boss: "bossOni",
+    boss: "bossSamurai",
   };
   const atkMap: Record<string, string> = {
-    oni: "oniAtk",
-    kappa: "kappaAtk",
-    tengu: "tenguAtk",
+    samurai: "samuraiAtk",
+    shinobi: "shinobiAtk",
+    ronin: "roninAtk",
     yurei: "yureiAtk",
-    boss: "oniAtk",
+    boss: "samuraiAtk",
   };
   // Switch to attack pose when hit (flash) or when close to being hit
   const useAttackPose = flash > 0.3;
@@ -890,7 +884,7 @@ export function drawEnemy(
       getSprite(spriteName) ||
       getSprite(idleMap[enemy.kind] as import("./sprites").SpriteName);
     if (sprite) {
-      const size = enemy.radius * 3.0;
+      const size = enemy.radius * 3.2;
       ctx.save();
       // Ground shadow
       ctx.fillStyle = "rgba(0,0,0,0.35)";
@@ -1002,23 +996,29 @@ export function drawEnemy(
       0,
     );
     ctx.fill();
-  } else if (enemy.kind === "kappa") {
+  } else if (enemy.kind === "shinobi") {
+    // Dark origami ninja shape
     ctx.beginPath();
     ctx.ellipse(
       0,
       0,
       enemy.radius * 0.88,
-      enemy.radius * 0.72,
+      enemy.radius * 0.78,
       0,
       0,
       Math.PI * 2,
     );
     ctx.fill();
-    ctx.fillStyle = "#c9d372";
-    ctx.beginPath();
-    ctx.arc(0, -enemy.radius * 0.42, enemy.radius * 0.34, 0, Math.PI * 2);
-    ctx.fill();
-  } else if (enemy.kind === "tengu") {
+    // Purple belt
+    ctx.fillStyle = "#6e4a8e";
+    ctx.fillRect(
+      -enemy.radius * 0.6,
+      enemy.radius * 0.1,
+      enemy.radius * 1.2,
+      enemy.radius * 0.18,
+    );
+  } else if (enemy.kind === "ronin") {
+    // Ronin with straw hat
     ctx.beginPath();
     ctx.ellipse(
       0,
@@ -1030,13 +1030,22 @@ export function drawEnemy(
       Math.PI * 2,
     );
     ctx.fill();
+    // Straw hat triangle
+    ctx.fillStyle = "#c4a35a";
+    ctx.beginPath();
+    ctx.moveTo(-enemy.radius * 0.7, -enemy.radius * 0.5);
+    ctx.lineTo(0, -enemy.radius * 1.3);
+    ctx.lineTo(enemy.radius * 0.7, -enemy.radius * 0.5);
+    ctx.closePath();
+    ctx.fill();
   } else {
     ctx.beginPath();
     ctx.arc(0, 0, enemy.radius, 0, Math.PI * 2);
     ctx.fill();
   }
 
-  if (enemy.kind === "oni" || enemy.kind === "boss") {
+  if (enemy.kind === "samurai" || enemy.kind === "boss") {
+    // Gold helmet crest
     ctx.fillStyle = "#d8ac56";
     ctx.beginPath();
     ctx.moveTo(-enemy.radius * 0.42, -enemy.radius * 0.72);
@@ -1052,14 +1061,14 @@ export function drawEnemy(
     ctx.fill();
   }
 
-  if (enemy.kind === "tengu") {
-    ctx.fillStyle = "#f0dbc8";
+  if (enemy.kind === "ronin") {
+    // Katana at hip
+    ctx.strokeStyle = "#c0c0c0";
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(0, -2);
-    ctx.lineTo(enemy.radius * 0.9, 2);
-    ctx.lineTo(0, enemy.radius * 0.14);
-    ctx.closePath();
-    ctx.fill();
+    ctx.moveTo(enemy.radius * 0.5, 0);
+    ctx.lineTo(enemy.radius * 1.2, -enemy.radius * 0.3);
+    ctx.stroke();
   }
 
   ctx.fillStyle = enemy.kind === "yurei" ? "#10141b" : "#f4d471";
@@ -1092,7 +1101,8 @@ export function drawEnemy(
   ctx.fill();
   ctx.shadowBlur = 0;
 
-  if (enemy.kind === "oni" || enemy.kind === "boss") {
+  if (enemy.kind === "samurai" || enemy.kind === "boss") {
+    // Angry mouth
     ctx.strokeStyle = "#f5c274";
     ctx.lineWidth = 1.6;
     ctx.beginPath();

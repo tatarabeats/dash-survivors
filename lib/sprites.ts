@@ -18,71 +18,75 @@ export type AnimState = {
 
 // All sprite definitions
 const SPRITE_DEFS = {
-  // Player - origami washi style (preferred)
+  // Player — NB2 origami ninja (rembg extracted)
   ninjaIdle: {
-    path: "/sprites/generated/ninja_idle_ori.png",
-    frameW: 1024,
-    frameH: 1024,
+    path: "/sprites/generated/ninja_player.png",
+    frameW: 400,
+    frameH: 730,
   },
   ninjaReady: {
-    path: "/sprites/generated/ninja_ready_ori.png",
-    frameW: 1024,
-    frameH: 1024,
+    path: "/sprites/generated/ninja_player.png",
+    frameW: 400,
+    frameH: 730,
   },
   ninjaAttack: {
-    path: "/sprites/generated/ninja_slash_ori.png",
-    frameW: 1024,
-    frameH: 1024,
+    path: "/sprites/generated/ninja_player.png",
+    frameW: 400,
+    frameH: 730,
   },
   ninjaRun: {
-    path: "/sprites/generated/ninja_run.png",
-    frameW: 1024,
-    frameH: 1024,
+    path: "/sprites/generated/ninja_player.png",
+    frameW: 400,
+    frameH: 730,
   },
-  // Enemies - origami washi style (preferred)
-  oni: { path: "/sprites/generated/oni_ori.png", frameW: 1024, frameH: 1024 },
-  kappa: {
-    path: "/sprites/generated/kappa_ori.png",
-    frameW: 1024,
-    frameH: 1024,
+  // Enemies — NB2 origami characters (rembg extracted)
+  samurai: {
+    path: "/sprites/generated/enemy_samurai.png",
+    frameW: 310,
+    frameH: 1020,
   },
-  tengu: {
-    path: "/sprites/generated/tengu_ori.png",
-    frameW: 1024,
-    frameH: 1024,
+  shinobi: {
+    path: "/sprites/generated/enemy_shinobi_purple.png",
+    frameW: 348,
+    frameH: 720,
+  },
+  ronin: {
+    path: "/sprites/generated/enemy_ronin.png",
+    frameW: 338,
+    frameH: 1000,
   },
   yurei: {
-    path: "/sprites/generated/yurei_ori.png",
-    frameW: 1024,
-    frameH: 1024,
+    path: "/sprites/generated/enemy_shinobi_grey.png",
+    frameW: 320,
+    frameH: 700,
   },
-  bossOni: {
-    path: "/sprites/generated/oni_boss_ori.png",
-    frameW: 1024,
-    frameH: 1024,
+  bossSamurai: {
+    path: "/sprites/generated/enemy_boss_samurai.png",
+    frameW: 350,
+    frameH: 1100,
   },
-  // Enemies - attack poses (rembg processed)
-  oniAtk: {
-    path: "/sprites/generated/oni_attack.png",
-    frameW: 1024,
-    frameH: 1024,
+  // Attack poses (reuse idle for now — procedural flash handles attack state)
+  samuraiAtk: {
+    path: "/sprites/generated/enemy_samurai.png",
+    frameW: 310,
+    frameH: 1020,
   },
-  kappaAtk: {
-    path: "/sprites/generated/kappa_attack.png",
-    frameW: 1024,
-    frameH: 1024,
+  shinobiAtk: {
+    path: "/sprites/generated/enemy_shinobi_purple.png",
+    frameW: 348,
+    frameH: 720,
   },
-  tenguAtk: {
-    path: "/sprites/generated/tengu_attack.png",
-    frameW: 1024,
-    frameH: 1024,
+  roninAtk: {
+    path: "/sprites/generated/enemy_ronin.png",
+    frameW: 338,
+    frameH: 1000,
   },
   yureiAtk: {
-    path: "/sprites/generated/yurei_attack.png",
-    frameW: 1024,
-    frameH: 1024,
+    path: "/sprites/generated/enemy_shinobi_grey.png",
+    frameW: 320,
+    frameH: 700,
   },
-  // Backgrounds - TOP-DOWN perspective (matching character view)
+  // Backgrounds — TOP-DOWN perspective (matching character view)
   bgBamboo: {
     path: "/sprites/generated/bg_topdown_bamboo.png",
     frameW: 1024,
