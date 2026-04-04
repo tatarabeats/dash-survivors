@@ -600,7 +600,8 @@ export class NinjaSurvivors {
     } else if (!this.dash) {
       this.chargeLevel = Math.max(0, this.chargeLevel - dt * 4);
     }
-    const sdt = this.freeze > 0 ? dt * 0.22 : dt;
+    const sdt =
+      this.freeze > 0 ? dt * 0.22 : this.hitStopTimer > 0 ? dt * 0.08 : dt;
     this.time += sdt;
     this.wave = 1 + Math.floor(this.time / WAVE_SECONDS);
     this.player.invulnerable = Math.max(0, this.player.invulnerable - sdt);
@@ -1205,7 +1206,13 @@ export class NinjaSurvivors {
       e.kind === "boss" ? 0.12 : e.elite ? 0.07 : 0.04,
     );
     // Paper shred burst — origami aesthetic death effect
-    const shredColors = ["#1a1a1a", "#f5f0e8", "#d4b86a", "#8b0000", "#2a2a2a"];
+    const shredColors = [
+      e.primary,
+      e.secondary,
+      "#f5f0e8",
+      "#d4b86a",
+      "#1a1a1a",
+    ];
     const shredCount = e.kind === "boss" ? 20 : e.elite ? 12 : 7;
     for (let s = 0; s < shredCount; s++) {
       const a = (s / shredCount) * Math.PI * 2 + Math.random() * 0.8;
@@ -2382,38 +2389,49 @@ export class NinjaSurvivors {
     );
     for (const p of this.particles) drawParticle(this.ctx, p);
     for (const s of this.paperShreds) drawPaperShred(this.ctx, s);
-    // Damage numbers (in world space)
+    // Damage numbers (in world space) — pop scale effect
     for (const d of this.damageNumbers) {
       const alpha = clamp(d.life / d.maxLife, 0, 1);
+      const t = 1 - d.life / d.maxLife; // 0→1 as time passes
+      const popScale = t < 0.15 ? 1 + (1 - t / 0.15) * 0.6 : 1; // scale up then settle
       this.ctx.save();
       this.ctx.globalAlpha = alpha;
+      this.ctx.translate(d.x, d.y);
+      this.ctx.scale(popScale, popScale);
       this.ctx.fillStyle = d.color;
-      this.ctx.font = `${d.crit ? "800" : "700"} ${d.crit ? 16 : 12}px "Noto Sans JP", sans-serif`;
+      this.ctx.font = `${d.crit ? "900" : "700"} ${d.crit ? 18 : 13}px "Noto Sans JP", sans-serif`;
       this.ctx.textAlign = "center";
+      this.ctx.strokeStyle = "rgba(0,0,0,0.6)";
+      this.ctx.lineWidth = 3;
+      this.ctx.strokeText(String(d.value), 0, 0);
       if (d.crit) {
         this.ctx.shadowColor = d.color;
-        this.ctx.shadowBlur = 8;
+        this.ctx.shadowBlur = 12;
       }
-      this.ctx.fillText(String(d.value), d.x, d.y);
+      this.ctx.fillText(String(d.value), 0, 0);
       this.ctx.restore();
     }
     this.ctx.restore();
-    // Combo counter (screen space)
+    // Combo counter (screen space) — bounce on new combo
     if (this.combo >= 3) {
       const comboAlpha = clamp(this.comboTimer / 0.5, 0, 1);
+      const freshness = clamp(this.comboTimer / 2.0, 0, 1);
+      const bounce = freshness > 0.9 ? 1 + (freshness - 0.9) * 8 : 1;
       this.ctx.save();
       this.ctx.globalAlpha = Math.min(1, comboAlpha);
+      const fontSize = Math.min(36, 20 + this.combo * 0.6);
+      this.ctx.translate(CANVAS_WIDTH / 2, CANVAS_HEIGHT - 170);
+      this.ctx.scale(bounce, bounce);
       this.ctx.fillStyle =
         this.combo >= 20 ? "#ff4444" : this.combo >= 10 ? "#f5d57e" : "#ffffff";
-      this.ctx.font = `800 ${Math.min(32, 18 + this.combo * 0.5)}px "Noto Sans JP", sans-serif`;
+      this.ctx.font = `900 ${fontSize}px "Noto Sans JP", sans-serif`;
       this.ctx.textAlign = "center";
+      this.ctx.strokeStyle = "rgba(0,0,0,0.5)";
+      this.ctx.lineWidth = 4;
+      this.ctx.strokeText(`${this.combo} COMBO`, 0, 0);
       this.ctx.shadowColor = this.ctx.fillStyle;
-      this.ctx.shadowBlur = 12;
-      this.ctx.fillText(
-        `${this.combo} COMBO`,
-        CANVAS_WIDTH / 2,
-        CANVAS_HEIGHT - 170,
-      );
+      this.ctx.shadowBlur = 16;
+      this.ctx.fillText(`${this.combo} COMBO`, 0, 0);
       this.ctx.restore();
     }
     drawScreenFlash(
