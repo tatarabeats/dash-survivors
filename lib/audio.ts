@@ -114,8 +114,7 @@ export class GameAudio {
 
   playUpgradeOpen() {
     if (!this.rateLimit("upgrade-open", 0.18)) return;
-    this.play("levelup", { gain: 0.28, rate: 1.06 });
-    this.play("select", { gain: 0.26, rate: 0.86, delay: 0.04 });
+    this.play("select", { gain: 0.18, rate: 1.3 });
   }
 
   playGameOver() {
@@ -166,9 +165,96 @@ export class GameAudio {
     this.play("slash", { gain: 0.35, rate: 0.7, delay: 0.03 });
   }
 
+  // BGM — procedural Japanese pentatonic loop
+  private bgmNodes: OscillatorNode[] = [];
+  private bgmGain: GainNode | null = null;
+  private bgmInterval: ReturnType<typeof setInterval> | null = null;
+
+  startBgm() {
+    if (!this.ctx || !this.musicBus || this.bgmGain) return;
+    this.bgmGain = this.ctx.createGain();
+    this.bgmGain.gain.value = 0;
+    this.bgmGain.connect(this.musicBus);
+
+    // Fade in
+    this.bgmGain.gain.setTargetAtTime(0.22, this.ctx.currentTime, 1.5);
+
+    // Drone pad (low)
+    const drone = this.ctx.createOscillator();
+    drone.type = "sine";
+    drone.frequency.value = 110; // A2
+    const droneG = this.ctx.createGain();
+    droneG.gain.value = 0.12;
+    drone.connect(droneG);
+    droneG.connect(this.bgmGain);
+    drone.start();
+    this.bgmNodes.push(drone);
+
+    // Drone 5th
+    const drone5 = this.ctx.createOscillator();
+    drone5.type = "sine";
+    drone5.frequency.value = 165; // E3
+    const drone5G = this.ctx.createGain();
+    drone5G.gain.value = 0.06;
+    drone5.connect(drone5G);
+    drone5G.connect(this.bgmGain);
+    drone5.start();
+    this.bgmNodes.push(drone5);
+
+    // Melodic arpeggio — Japanese In scale (A C D E G)
+    const scale = [220, 261.6, 293.7, 330, 392, 440, 523.3, 587.3, 660];
+    let noteIdx = 0;
+
+    this.bgmInterval = setInterval(() => {
+      if (!this.ctx || !this.bgmGain || this.destroyed) {
+        this.stopBgm();
+        return;
+      }
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      osc.type = "triangle";
+      const freq = scale[noteIdx % scale.length];
+      osc.frequency.value = freq;
+
+      const noteGain = this.ctx.createGain();
+      noteGain.gain.setValueAtTime(0.08, now);
+      noteGain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+
+      osc.connect(noteGain);
+      noteGain.connect(this.bgmGain);
+      osc.start(now);
+      osc.stop(now + 0.7);
+
+      // Semi-random walk through scale
+      noteIdx += Math.random() < 0.3 ? 2 : 1;
+      if (Math.random() < 0.15) noteIdx = Math.floor(Math.random() * 5);
+    }, 400);
+  }
+
+  stopBgm() {
+    if (this.bgmInterval) {
+      clearInterval(this.bgmInterval);
+      this.bgmInterval = null;
+    }
+    for (const osc of this.bgmNodes) {
+      try {
+        osc.stop();
+      } catch {
+        /* */
+      }
+      osc.disconnect();
+    }
+    this.bgmNodes = [];
+    if (this.bgmGain) {
+      this.bgmGain.disconnect();
+      this.bgmGain = null;
+    }
+  }
+
   destroy() {
     this.destroyed = true;
     this.stopAmbience();
+    this.stopBgm();
     if (this.ctx) void this.ctx.close();
     this.ctx = null;
     this.master = null;

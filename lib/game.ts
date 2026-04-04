@@ -257,29 +257,32 @@ const WEAPON_DEF: Record<
     shurikenStart: number;
     desc: string;
     color: string;
+    stats: { power: number; range: number; speed: number };
   }
 > = {
   kusarigama: {
     name: "鎖鎌",
     icon: "⛓️",
-    dashDamageMul: 0.85,
-    dashDistMul: 1.25,
+    dashDamageMul: 0.9,
+    dashDistMul: 1.15,
     slashSpanMul: 1.5,
     slashRadiusMul: 1.3,
     shurikenStart: 2,
-    desc: "広範囲の回転攻撃",
+    desc: "広い斬撃で群れを薙ぎ払う",
     color: "#8b7355",
+    stats: { power: 2, range: 4, speed: 3 },
   },
   yari: {
     name: "槍",
     icon: "🔱",
-    dashDamageMul: 1.2,
+    dashDamageMul: 1.1,
     dashDistMul: 1.0,
-    slashSpanMul: 0.5,
-    slashRadiusMul: 1.8,
+    slashSpanMul: 0.6,
+    slashRadiusMul: 1.5,
     shurikenStart: 1,
-    desc: "長射程の突き攻撃",
+    desc: "一撃の重さで敵を貫く",
     color: "#c4a35a",
+    stats: { power: 4, range: 3, speed: 2 },
   },
   katana: {
     name: "刀",
@@ -289,19 +292,21 @@ const WEAPON_DEF: Record<
     slashSpanMul: 1.0,
     slashRadiusMul: 1.0,
     shurikenStart: 2,
-    desc: "バランスの取れた斬撃",
+    desc: "攻守のバランスに優れる",
     color: "#e8e0d0",
+    stats: { power: 3, range: 3, speed: 3 },
   },
   shuriken: {
     name: "手裏剣",
     icon: "🌟",
-    dashDamageMul: 0.7,
-    dashDistMul: 0.9,
-    slashSpanMul: 0.8,
-    slashRadiusMul: 0.8,
-    shurikenStart: 4,
-    desc: "大量の遠距離自動攻撃",
+    dashDamageMul: 0.8,
+    dashDistMul: 0.95,
+    slashSpanMul: 0.85,
+    slashRadiusMul: 0.85,
+    shurikenStart: 5,
+    desc: "大量の自動攻撃で制圧する",
     color: "#a0a8b8",
+    stats: { power: 2, range: 2, speed: 5 },
   },
 };
 
@@ -637,7 +642,8 @@ export class NinjaSurvivors {
         this.selectedWeapon = weapons[i];
         this.weaponSelect = false;
         this.player = this.makePlayer();
-        this.audio.playLevelUp();
+        this.audio.playSelect();
+        this.audio.startBgm();
         return;
       }
     }
@@ -728,6 +734,7 @@ export class NinjaSurvivors {
     if (this.player.hp <= 0) {
       this.player.hp = 0;
       this.gameOver = true;
+      this.audio.stopBgm();
       this.audio.playGameOver();
       this.vibrate(100);
       this.saveBestScore();
@@ -2808,29 +2815,38 @@ export class NinjaSurvivors {
         this.ctx.font = '800 22px "Shippori Mincho", serif';
         this.ctx.fillText(w.name, cx + cardW / 2, cy + 108);
         // Description
-        this.ctx.fillStyle = "rgba(255,255,255,0.65)";
-        this.ctx.font = '500 12px "Noto Sans JP", sans-serif';
-        this.ctx.fillText(w.desc, cx + cardW / 2, cy + 140);
-        // Damage stat
-        const dmgLabel =
-          w.dashDamageMul >= 1.1
-            ? "攻撃 ▲"
-            : w.dashDamageMul <= 0.85
-              ? "攻撃 ▼"
-              : "攻撃 ─";
-        const rangeLabel =
-          w.slashRadiusMul >= 1.3
-            ? "射程 ▲"
-            : w.slashRadiusMul <= 0.85
-              ? "射程 ▼"
-              : "射程 ─";
-        this.ctx.fillStyle = "rgba(216,180,94,0.7)";
+        this.ctx.fillStyle = "rgba(255,255,255,0.6)";
         this.ctx.font = '500 11px "Noto Sans JP", sans-serif';
-        this.ctx.fillText(
-          `${dmgLabel}  ${rangeLabel}`,
-          cx + cardW / 2,
-          cy + 170,
-        );
+        this.ctx.fillText(w.desc, cx + cardW / 2, cy + 135);
+        // Star stat bars
+        const statLabels = [
+          { label: "威力", val: w.stats.power },
+          { label: "範囲", val: w.stats.range },
+          { label: "速度", val: w.stats.speed },
+        ];
+        this.ctx.textAlign = "left";
+        const barX = cx + 16;
+        for (let s = 0; s < 3; s++) {
+          const sy = cy + 153 + s * 16;
+          this.ctx.fillStyle = "rgba(255,255,255,0.5)";
+          this.ctx.font = '500 10px "Noto Sans JP", sans-serif';
+          this.ctx.fillText(statLabels[s].label, barX, sy);
+          // Draw 5 dots
+          for (let d = 0; d < 5; d++) {
+            const dx = barX + 34 + d * 14;
+            const filled = d < statLabels[s].val;
+            this.ctx.beginPath();
+            this.ctx.arc(dx, sy - 3, 4, 0, Math.PI * 2);
+            if (filled) {
+              this.ctx.fillStyle = w.color;
+              this.ctx.fill();
+            } else {
+              this.ctx.fillStyle = "rgba(255,255,255,0.12)";
+              this.ctx.fill();
+            }
+          }
+        }
+        this.ctx.textAlign = "center";
       }
       this.ctx.restore();
     }
