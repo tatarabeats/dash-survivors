@@ -408,6 +408,7 @@ export class NinjaSurvivors {
   private last = 0;
   private dead = false;
   private id = 1;
+  private selectedWeapon: WeaponType = "katana";
   private player = this.makePlayer();
   private dash: Dash | null = null;
   private aimStart: V | null = null;
@@ -454,7 +455,6 @@ export class NinjaSurvivors {
   private comboTimer = 0;
   private titleScreen = true;
   private weaponSelect = false;
-  private selectedWeapon: WeaponType = "katana";
   private punchX = 0;
   private punchY = 0;
   private levelUpRing = 0;
