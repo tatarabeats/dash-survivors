@@ -517,6 +517,7 @@ export class NinjaSurvivors {
     this.aimStart = { x, y };
     this.aimCurrent = { x, y };
     this.aimStartTime = performance.now();
+    this.audio.startCharge();
   }
 
   onTouchMove(x: number, y: number) {
@@ -527,6 +528,7 @@ export class NinjaSurvivors {
   cancelTouch() {
     this.aimStart = null;
     this.aimCurrent = null;
+    this.audio.stopCharge();
   }
 
   onTouchEnd(x: number, y: number) {
@@ -710,6 +712,7 @@ export class NinjaSurvivors {
         0,
         1,
       );
+      this.audio.updateCharge(this.chargeLevel);
     } else if (!this.dash) {
       this.chargeLevel = Math.max(0, this.chargeLevel - dt * 4);
     }
@@ -1746,9 +1749,9 @@ export class NinjaSurvivors {
     if (this.hasBoss() && this.enemies.length >= MAX_ENEMIES / 2) return;
     this.spawnTimer -= dt;
     if (this.spawnTimer > 0) return;
-    const danger = 1 + this.time * 0.021;
-    this.spawnTimer = Math.max(0.18, 0.92 - danger * 0.054);
-    let budget = 1.2 + danger * 0.46 + Math.random() * 0.65;
+    const danger = 1 + this.time * 0.028;
+    this.spawnTimer = Math.max(0.14, 0.85 - danger * 0.06);
+    let budget = 1.4 + danger * 0.55 + Math.random() * 0.7;
     if (this.time < 18) budget *= 0.82;
     if (this.hasBoss()) budget *= 0.85;
     while (budget > 0 && this.enemies.length < MAX_ENEMIES) {
@@ -1782,9 +1785,10 @@ export class NinjaSurvivors {
       (kind === "samurai" || kind === "ronin" || kind === "shinobi");
     const hpScale =
       kind === "boss"
-        ? 1 + this.wave * 0.22
-        : 1 + this.time * 0.014 + (elite ? 0.6 : 0);
-    const spScale = 1 + this.time * 0.0019 + (elite ? 0.08 : 0);
+        ? 1 + this.wave * 0.35
+        : 1 + this.time * 0.022 + this.wave * 0.06 + (elite ? 0.6 : 0);
+    const spScale =
+      1 + this.time * 0.003 + this.wave * 0.015 + (elite ? 0.1 : 0);
     this.enemies.push({
       id: this.next(),
       kind,
@@ -1798,7 +1802,7 @@ export class NinjaSurvivors {
         d.radius * (kind === "boss" ? 1 + this.wave * 0.032 : elite ? 1.08 : 1),
       speed: d.speed * spScale,
       damage:
-        d.damage + this.wave * (kind === "boss" ? 2.6 : 1.05) + (elite ? 4 : 0),
+        d.damage + this.wave * (kind === "boss" ? 3.5 : 1.6) + (elite ? 5 : 0),
       xp:
         d.xp +
         (kind === "boss" ? this.wave * 2 : Math.floor(this.wave / 3)) +
@@ -2032,6 +2036,7 @@ export class NinjaSurvivors {
       this.openUpgradeChoices();
     } else {
       this.paused = false;
+      this.audio.resumeBgm();
     }
   }
 
@@ -2050,6 +2055,7 @@ export class NinjaSurvivors {
     this.upgrades = this.rollUpgrades();
     this.upgradeGuard = UPGRADE_GUARD;
     this.audio.playUpgradeOpen();
+    this.audio.pauseBgm();
   }
 
   private ensureSkill(key: SkillKey) {
@@ -2328,6 +2334,7 @@ export class NinjaSurvivors {
 
   private startDash(dir: V, charge = 0) {
     if (this.dash || this.player.dashCooldown > 0) return;
+    this.audio.stopCharge();
     const ultimate = false;
     const chargeBonus = 1 + charge * 1.5; // up to 2.5x damage at full charge
     const distBonus = 1 + charge * 0.3; // up to 1.3x distance at full charge
@@ -2377,6 +2384,9 @@ export class NinjaSurvivors {
     this.manualPause = !this.manualPause;
     if (this.manualPause) {
       this.cancelTouch();
+      this.audio.pauseBgm();
+    } else {
+      this.audio.resumeBgm();
     }
   }
 

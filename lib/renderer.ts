@@ -613,10 +613,15 @@ export function drawPlayer(
     const size = player.radius * 3.5;
     const flipX = dashDir ? dashDir.x < 0 : false;
     // Breathing/bobbing animation — stronger bob when idle
-    const bob = isDashing ? 0 : Math.sin(time * 2.8) * 4;
-    // Squash/stretch — dash squash during movement, bounce on idle
-    const squashX = isDashing ? 1.15 : 1 + Math.sin(time * 4.5) * 0.03;
-    const squashY = isDashing ? 0.85 : 1 - Math.sin(time * 4.5) * 0.03;
+    const bob = isDashing ? Math.sin(time * 18) * 3 : Math.sin(time * 2.8) * 5;
+    // Squash/stretch — more dramatic dash squash, bouncy idle
+    const squashX = isDashing ? 1.25 : 1 + Math.sin(time * 4.5) * 0.04;
+    const squashY = isDashing ? 0.78 : 1 - Math.sin(time * 4.5) * 0.04;
+    // Tilt during dash for dynamic feel
+    const tilt =
+      isDashing && dashDir
+        ? Math.atan2(dashDir.y, dashDir.x) * 0.15
+        : Math.sin(time * 1.6) * 0.03;
 
     // Ground shadow
     ctx.save();
@@ -644,8 +649,9 @@ export function drawPlayer(
       ctx.shadowBlur = 28;
     }
 
-    // Apply squash/stretch transform
+    // Apply squash/stretch + tilt transform
     ctx.translate(player.x, player.y + bob);
+    ctx.rotate(tilt);
     ctx.scale(squashX, squashY);
     drawFrame(ctx, ninjaSprite, 0, -size / 2, -size / 2, size, size, flipX);
     ctx.restore();
@@ -1635,30 +1641,68 @@ function drawUpgradeGlyph(
   ctx.save();
   ctx.translate(x, y);
 
-  // Background circle with gradient
-  const bg = ctx.createRadialGradient(0, -4, 0, 0, 0, radius);
-  bg.addColorStop(0, "rgba(27,32,44,0.96)");
-  bg.addColorStop(1, "rgba(8,10,18,0.98)");
+  // Outer decorative ring (hexagonal shape for premium feel)
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.globalAlpha = 0.3;
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 - Math.PI / 2;
+    const px = Math.cos(a) * (radius + 4);
+    const py = Math.sin(a) * (radius + 4);
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  // Background circle with richer gradient
+  const bg = ctx.createRadialGradient(0, -6, 0, 0, 0, radius);
+  bg.addColorStop(0, "rgba(40,38,52,0.95)");
+  bg.addColorStop(0.6, "rgba(18,20,32,0.98)");
+  bg.addColorStop(1, "rgba(6,8,14,0.99)");
   ctx.fillStyle = bg;
   ctx.beginPath();
   ctx.arc(0, 0, radius, 0, Math.PI * 2);
   ctx.fill();
 
-  // Glowing border
+  // Inner glow ring
   ctx.strokeStyle = color;
   ctx.lineWidth = 2;
   ctx.shadowColor = color;
-  ctx.shadowBlur = 14;
+  ctx.shadowBlur = 18;
   ctx.beginPath();
-  ctx.arc(0, 0, radius - 1, 0, Math.PI * 2);
+  ctx.arc(0, 0, radius - 2, 0, Math.PI * 2);
   ctx.stroke();
   ctx.shadowBlur = 0;
 
-  // Emoji icon (centered)
+  // Subtle inner highlight
+  const highlight = ctx.createRadialGradient(
+    0,
+    -radius * 0.3,
+    0,
+    0,
+    0,
+    radius * 0.7,
+  );
+  highlight.addColorStop(0, "rgba(255,255,255,0.08)");
+  highlight.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = highlight;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius - 3, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Icon with shadow for depth
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.font = `${Math.floor(size * 0.48)}px sans-serif`;
+  ctx.font = `${Math.floor(size * 0.5)}px sans-serif`;
+  ctx.shadowColor = "rgba(0,0,0,0.6)";
+  ctx.shadowBlur = 4;
+  ctx.shadowOffsetY = 2;
   ctx.fillText(icon, 0, 2);
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetY = 0;
 
   ctx.restore();
 }

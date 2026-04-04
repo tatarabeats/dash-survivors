@@ -156,6 +156,53 @@ export class GameAudio {
     this.play("bossWarning", { gain: 0.3, rate: 0.6, delay: 0.3 });
   }
 
+  // Charge sound — continuous rising tone while aiming
+  private chargeOsc: OscillatorNode | null = null;
+  private chargeGainNode: GainNode | null = null;
+
+  startCharge() {
+    if (!this.ctx || !this.sfxBus || this.chargeOsc) return;
+    const osc = this.ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.value = 200;
+    const g = this.ctx.createGain();
+    g.gain.value = 0;
+    osc.connect(g);
+    g.connect(this.sfxBus);
+    osc.start();
+    this.chargeOsc = osc;
+    this.chargeGainNode = g;
+  }
+
+  updateCharge(level: number) {
+    if (!this.ctx || !this.chargeOsc || !this.chargeGainNode) return;
+    const now = this.ctx.currentTime;
+    // Pitch rises with charge level
+    this.chargeOsc.frequency.setTargetAtTime(200 + level * 400, now, 0.05);
+    // Volume rises gently
+    this.chargeGainNode.gain.setTargetAtTime(
+      Math.min(level * 0.15, 0.12),
+      now,
+      0.05,
+    );
+  }
+
+  stopCharge() {
+    if (this.chargeOsc) {
+      try {
+        this.chargeOsc.stop();
+      } catch {
+        /* */
+      }
+      this.chargeOsc.disconnect();
+      this.chargeOsc = null;
+    }
+    if (this.chargeGainNode) {
+      this.chargeGainNode.disconnect();
+      this.chargeGainNode = null;
+    }
+  }
+
   playUltimateReady() {
     this.play("ultimateReady", { gain: 0.45, rate: 1.0 });
   }
@@ -169,6 +216,48 @@ export class GameAudio {
   private bgmNodes: OscillatorNode[] = [];
   private bgmGain: GainNode | null = null;
   private bgmInterval: ReturnType<typeof setInterval> | null = null;
+
+  pauseBgm() {
+    if (this.bgmInterval) {
+      clearInterval(this.bgmInterval);
+      this.bgmInterval = null;
+    }
+    // Mute drone but keep nodes alive
+    if (this.bgmGain && this.ctx) {
+      this.bgmGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.3);
+    }
+  }
+
+  resumeBgm() {
+    if (!this.ctx || !this.bgmGain || !this.musicBus) return;
+    if (this.bgmNodes.length === 0) return; // not started yet
+    // Restore volume
+    this.bgmGain.gain.setTargetAtTime(0.22, this.ctx.currentTime, 0.5);
+    // Restart arpeggio if not running
+    if (!this.bgmInterval) {
+      const scale = [220, 261.6, 293.7, 330, 392, 440, 523.3, 587.3, 660];
+      let noteIdx = Math.floor(Math.random() * 5);
+      this.bgmInterval = setInterval(() => {
+        if (!this.ctx || !this.bgmGain || this.destroyed) {
+          this.stopBgm();
+          return;
+        }
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        osc.type = "triangle";
+        osc.frequency.value = scale[noteIdx % scale.length];
+        const noteGain = this.ctx.createGain();
+        noteGain.gain.setValueAtTime(0.08, now);
+        noteGain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+        osc.connect(noteGain);
+        noteGain.connect(this.bgmGain);
+        osc.start(now);
+        osc.stop(now + 0.7);
+        noteIdx += Math.random() < 0.3 ? 2 : 1;
+        if (Math.random() < 0.15) noteIdx = Math.floor(Math.random() * 5);
+      }, 400);
+    }
+  }
 
   startBgm() {
     if (!this.ctx || !this.musicBus || this.bgmGain) return;
