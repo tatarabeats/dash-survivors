@@ -613,7 +613,10 @@ export function drawPlayer(
     const size = player.radius * 3.5;
     const flipX = dashDir ? dashDir.x < 0 : false;
     // Breathing/bobbing animation — stronger bob when idle
-    const bob = isDashing ? 0 : Math.sin(time * 2.8) * 3;
+    const bob = isDashing ? 0 : Math.sin(time * 2.8) * 4;
+    // Squash/stretch — dash squash during movement, bounce on idle
+    const squashX = isDashing ? 1.15 : 1 + Math.sin(time * 4.5) * 0.03;
+    const squashY = isDashing ? 0.85 : 1 - Math.sin(time * 4.5) * 0.03;
 
     // Ground shadow
     ctx.save();
@@ -622,7 +625,7 @@ export function drawPlayer(
     ctx.ellipse(
       player.x,
       player.y + player.radius * 1.3,
-      player.radius * 1.1,
+      player.radius * 1.2,
       player.radius * 0.35,
       0,
       0,
@@ -635,22 +638,16 @@ export function drawPlayer(
       ctx.globalAlpha = 0.4;
     }
 
-    // Dashing glow
+    // Dashing glow + aura
     if (isDashing) {
-      ctx.shadowColor = "rgba(207,46,47,0.8)";
-      ctx.shadowBlur = 20;
+      ctx.shadowColor = "rgba(207,46,47,0.9)";
+      ctx.shadowBlur = 28;
     }
 
-    drawFrame(
-      ctx,
-      ninjaSprite,
-      0,
-      player.x - size / 2,
-      player.y - size / 2 + bob,
-      size,
-      size,
-      flipX,
-    );
+    // Apply squash/stretch transform
+    ctx.translate(player.x, player.y + bob);
+    ctx.scale(squashX, squashY);
+    drawFrame(ctx, ninjaSprite, 0, -size / 2, -size / 2, size, size, flipX);
     ctx.restore();
     return;
   }
@@ -851,10 +848,32 @@ export function drawEnemy(
     secondary: string;
     elite: boolean;
     buffed: number;
+    dying: boolean;
+    deathTimer: number;
   },
   time: number,
 ) {
   const flash = clamp(enemy.hitFlash / 0.16, 0, 1);
+
+  // Death animation — shrink, spin, fade out
+  if (enemy.dying) {
+    const deathProgress = 1 - clamp(enemy.deathTimer / 0.3, 0, 1);
+    const scale = 1 - deathProgress * 0.8;
+    const alpha = 1 - deathProgress;
+    const spin = deathProgress * Math.PI * 2;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(enemy.x, enemy.y);
+    ctx.rotate(spin);
+    ctx.scale(scale, scale);
+    // Draw a simple shrinking version
+    ctx.fillStyle = enemy.primary;
+    ctx.beginPath();
+    ctx.arc(0, 0, enemy.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
 
   // Try sprite rendering — idle + attack pose switching
   const idleMap: Record<string, string> = {

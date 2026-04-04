@@ -91,6 +91,8 @@ type Enemy = {
   attackTimer: number;
   scrollDrop: boolean;
   buffed: number;
+  dying: boolean;
+  deathTimer: number;
 };
 type Projectile = {
   id: number;
@@ -794,6 +796,7 @@ export class NinjaSurvivors {
     }
     for (const e of this.enemies) {
       if (
+        e.dying ||
         this.dash.hits.has(e.id) ||
         segDist(e, prev, this.player) > e.radius + PLAYER_RADIUS + 8
       )
@@ -872,7 +875,7 @@ export class NinjaSurvivors {
         y: this.player.y + Math.sin(a) * this.player.shurikenRadius,
       };
       for (const e of this.enemies) {
-        if (e.orbit > 0 || dist(p, e) > e.radius + 10) continue;
+        if (e.dying || e.orbit > 0 || dist(p, e) > e.radius + 10) continue;
         e.hp -= this.player.shurikenDamage;
         e.hit = 0.1;
         e.orbit = 0.14;
@@ -1149,7 +1152,8 @@ export class NinjaSurvivors {
         continue;
       }
       for (const e of this.enemies) {
-        if (p.hits.has(e.id) || dist(p, e) > p.radius + e.radius) continue;
+        if (e.dying || p.hits.has(e.id) || dist(p, e) > p.radius + e.radius)
+          continue;
         p.hits.add(e.id);
         e.hp -= p.damage;
         e.hit = 0.14;
@@ -1202,6 +1206,14 @@ export class NinjaSurvivors {
   private updateEnemies(dt: number) {
     for (let i = this.enemies.length - 1; i >= 0; i -= 1) {
       const e = this.enemies[i];
+      // Handle dying enemies — shrink and fade, then remove
+      if (e.dying) {
+        e.deathTimer -= dt;
+        if (e.deathTimer <= 0) {
+          this.enemies.splice(i, 1);
+        }
+        continue;
+      }
       e.hit = Math.max(0, e.hit - dt);
       if (e.kind === "boss") this.updateBossEnemy(e, dt);
       const toPlayer = { x: this.player.x - e.x, y: this.player.y - e.y };
@@ -1241,7 +1253,7 @@ export class NinjaSurvivors {
         if (Math.random() < 0.12)
           this.impact(this.player.x, this.player.y, "#ff8a7c", 2, 65);
       }
-      if (e.hp <= 0) this.killEnemy(i);
+      if (e.hp <= 0 && !e.dying) this.killEnemy(i);
     }
     if (this.enemies.length > MAX_ENEMIES) {
       this.enemies.sort((a, b) => dist(a, this.player) - dist(b, this.player));
@@ -1251,7 +1263,10 @@ export class NinjaSurvivors {
 
   private killEnemy(i: number) {
     const e = this.enemies[i];
-    this.enemies.splice(i, 1);
+    // Start death animation instead of immediate removal
+    e.dying = true;
+    e.deathTimer = 0.3;
+    e.hp = 0;
     this.player.killCount += 1;
     this.trauma = Math.min(
       1,
@@ -1774,6 +1789,8 @@ export class NinjaSurvivors {
         kind === "boss" ? Math.max(1.4, 3.8 - rank * 0.16) : rand(2.6, 4.8),
       scrollDrop: kind === "boss" || (elite && Math.random() < 0.7),
       buffed: 0,
+      dying: false,
+      deathTimer: 0,
     });
   }
 
@@ -2444,7 +2461,11 @@ export class NinjaSurvivors {
     for (const bolt of this.bolts) drawLightning(this.ctx, bolt);
     for (const p of this.projectiles) drawProjectile(this.ctx, p);
     for (const e of this.enemies)
-      drawEnemy(this.ctx, { ...e, hitFlash: e.hit }, this.time);
+      drawEnemy(
+        this.ctx,
+        { ...e, hitFlash: e.hit, dying: e.dying, deathTimer: e.deathTimer },
+        this.time,
+      );
     for (let i = 0; i < this.player.shurikenCount; i += 1) {
       const a =
         this.shurikenAngle + (Math.PI * 2 * i) / this.player.shurikenCount;
