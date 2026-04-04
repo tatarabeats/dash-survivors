@@ -750,6 +750,24 @@ export class NinjaSurvivors {
       life: 0.16,
       maxLife: 0.16,
     });
+    // Speed line particles during dash
+    if (Math.random() < 0.6) {
+      const perpX = -this.dash.dir.y;
+      const perpY = this.dash.dir.x;
+      const offset = (Math.random() - 0.5) * 40;
+      this.particles.push({
+        id: this.next(),
+        x: this.player.x + perpX * offset,
+        y: this.player.y + perpY * offset,
+        vx: -this.dash.dir.x * 180 + (Math.random() - 0.5) * 30,
+        vy: -this.dash.dir.y * 180 + (Math.random() - 0.5) * 30,
+        size: 1.5 + Math.random() * 1.5,
+        color: "rgba(255,246,234,0.6)",
+        glow: 4,
+        life: 0.12 + Math.random() * 0.08,
+        maxLife: 0.2,
+      });
+    }
     // Main dash slash — larger, more dramatic
     const dashAngle = Math.atan2(this.dash.dir.y, this.dash.dir.x);
     this.slashes.push({
@@ -1472,7 +1490,7 @@ export class NinjaSurvivors {
   private updateEnemyAuras() {
     for (const enemy of this.enemies) enemy.buffed = 0;
     for (const source of this.enemies) {
-      if (!source.elite && source.kind !== "boss") continue;
+      if (source.dying || (!source.elite && source.kind !== "boss")) continue;
       const auraRadius = source.kind === "boss" ? 156 : 124;
       const auraStrength = source.kind === "boss" ? 0.34 : 0.22;
       for (const enemy of this.enemies) {
