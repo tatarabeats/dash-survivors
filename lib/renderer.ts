@@ -589,6 +589,145 @@ export function drawShuriken(
   ctx.restore();
 }
 
+// Weapon-specific sprite map
+const WEAPON_SPRITE_MAP: Record<string, string> = {
+  katana: "ninjaIdle",
+  yari: "ninjaBlue",
+  kusarigama: "ninjaGreen",
+  shuriken: "ninjaPurple",
+};
+
+// Weapon visual colors
+const WEAPON_GLOW: Record<string, string> = {
+  katana: "rgba(232,224,208,0.9)",
+  yari: "rgba(196,163,90,0.9)",
+  kusarigama: "rgba(139,115,85,0.9)",
+  shuriken: "rgba(160,168,184,0.9)",
+};
+
+function drawWeaponOverlay(
+  ctx: CanvasRenderingContext2D,
+  weapon: string,
+  radius: number,
+  time: number,
+  isDashing: boolean,
+  isCharging: boolean,
+  chargeLevel: number,
+) {
+  const r = radius;
+  ctx.save();
+
+  if (weapon === "katana") {
+    // Katana blade — extends to the right, swings during dash
+    const swingAngle = isDashing
+      ? Math.sin(time * 24) * 0.8
+      : isCharging
+        ? -0.3 - chargeLevel * 0.4
+        : Math.sin(time * 1.5) * 0.1;
+    ctx.rotate(swingAngle);
+    const bladeLen = isDashing
+      ? r * 2.8
+      : isCharging
+        ? r * 2.2 + chargeLevel * r
+        : r * 1.8;
+    const grad = ctx.createLinearGradient(r * 0.5, 0, r * 0.5 + bladeLen, 0);
+    grad.addColorStop(0, "rgba(200,200,210,0.9)");
+    grad.addColorStop(0.7, "rgba(240,240,250,0.95)");
+    grad.addColorStop(1, "rgba(255,255,255,0.4)");
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = isDashing ? 3.5 : 2.5;
+    ctx.lineCap = "round";
+    ctx.shadowColor = isDashing ? "#fff" : "rgba(200,200,255,0.5)";
+    ctx.shadowBlur = isDashing ? 12 : 4;
+    ctx.beginPath();
+    ctx.moveTo(r * 0.3, 0);
+    ctx.lineTo(r * 0.3 + bladeLen, isDashing ? -3 : 0);
+    ctx.stroke();
+    // Tsuba (guard)
+    ctx.fillStyle = "#8b7355";
+    ctx.fillRect(r * 0.2, -4, 5, 8);
+  } else if (weapon === "yari") {
+    // Spear — long shaft with triangular head
+    const thrustOffset = isDashing
+      ? Math.sin(time * 20) * 8
+      : isCharging
+        ? chargeLevel * 12
+        : 0;
+    const spearLen = r * 2.5 + thrustOffset;
+    ctx.strokeStyle = "#8b6914";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(r * 0.2, 0);
+    ctx.lineTo(r * 0.2 + spearLen, 0);
+    ctx.stroke();
+    // Spearhead
+    const hx = r * 0.2 + spearLen;
+    ctx.fillStyle = isDashing ? "#fff" : "#c0c0c8";
+    ctx.shadowColor = isDashing ? "#fff" : "rgba(200,200,200,0.5)";
+    ctx.shadowBlur = isDashing ? 10 : 3;
+    ctx.beginPath();
+    ctx.moveTo(hx, -5);
+    ctx.lineTo(hx + 12, 0);
+    ctx.lineTo(hx, 5);
+    ctx.closePath();
+    ctx.fill();
+  } else if (weapon === "kusarigama") {
+    // Chain sickle — curved blade + chain that swings
+    const chainAngle = isDashing
+      ? time * 12
+      : isCharging
+        ? time * 3 + chargeLevel * Math.PI
+        : Math.sin(time * 2) * 0.4;
+    // Sickle blade
+    ctx.strokeStyle = "#c0c0c8";
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = isDashing ? "#fff" : "rgba(180,180,180,0.4)";
+    ctx.shadowBlur = isDashing ? 8 : 2;
+    ctx.beginPath();
+    ctx.arc(r * 0.6, -2, r * 0.7, -0.8, 0.3);
+    ctx.stroke();
+    // Chain links
+    ctx.strokeStyle = "rgba(160,140,100,0.7)";
+    ctx.lineWidth = 1.5;
+    const chainLen = isDashing ? r * 2 : r * 1.2;
+    for (let i = 0; i < 5; i++) {
+      const t = i / 5;
+      const cx = r * 0.3 + Math.cos(chainAngle + t * 2) * chainLen * t;
+      const cy = Math.sin(chainAngle + t * 2) * chainLen * t * 0.5;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 2, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  } else if (weapon === "shuriken") {
+    // Orbiting shuriken indicators
+    const orbCount = 3;
+    for (let i = 0; i < orbCount; i++) {
+      const a = time * 3 + (i / orbCount) * Math.PI * 2;
+      const orbitR = isCharging ? r * 1.2 + chargeLevel * r * 0.5 : r * 1.0;
+      const sx = Math.cos(a) * orbitR;
+      const sy = Math.sin(a) * orbitR;
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(time * 8);
+      // 4-pointed star
+      ctx.fillStyle = isDashing ? "#fff" : "rgba(160,168,184,0.8)";
+      ctx.shadowColor = isDashing ? "#a0a8b8" : "rgba(160,168,184,0.3)";
+      ctx.shadowBlur = isDashing ? 8 : 3;
+      ctx.beginPath();
+      for (let p = 0; p < 4; p++) {
+        const pa = (p / 4) * Math.PI * 2;
+        ctx.lineTo(Math.cos(pa) * 5, Math.sin(pa) * 5);
+        const pb = ((p + 0.5) / 4) * Math.PI * 2;
+        ctx.lineTo(Math.cos(pb) * 2, Math.sin(pb) * 2);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+  ctx.restore();
+}
+
 export function drawPlayer(
   ctx: CanvasRenderingContext2D,
   player: {
@@ -599,29 +738,45 @@ export function drawPlayer(
   },
   dashDir: { x: number; y: number } | null,
   time: number,
+  weapon = "katana",
+  chargeLevel = 0,
+  isCharging = false,
 ) {
   const angle = dashDir
     ? Math.atan2(dashDir.y, dashDir.x)
     : Math.sin(time * 1.6) * 0.06;
   const isDashing = Boolean(dashDir);
 
-  // Try sprite rendering first — idle, run, attack poses
-  const ninjaSprite = isDashing
-    ? getSprite("ninjaAttack") || getSprite("ninjaRun")
-    : getSprite("ninjaIdle");
+  // Select weapon-specific sprite or fall back to default
+  const spriteName = WEAPON_SPRITE_MAP[weapon] || "ninjaIdle";
+  const ninjaSprite = getSprite(spriteName as never) || getSprite("ninjaIdle");
   if (ninjaSprite) {
     const size = player.radius * 3.5;
     const flipX = dashDir ? dashDir.x < 0 : false;
-    // Breathing/bobbing animation — stronger bob when idle
-    const bob = isDashing ? Math.sin(time * 18) * 3 : Math.sin(time * 2.8) * 5;
-    // Squash/stretch — more dramatic dash squash, bouncy idle
-    const squashX = isDashing ? 1.25 : 1 + Math.sin(time * 4.5) * 0.04;
-    const squashY = isDashing ? 0.78 : 1 - Math.sin(time * 4.5) * 0.04;
-    // Tilt during dash for dynamic feel
+    // Breathing/bobbing animation
+    const bob = isDashing
+      ? Math.sin(time * 18) * 3
+      : isCharging
+        ? Math.sin(time * 6) * 2 // tense wobble when charging
+        : Math.sin(time * 2.8) * 5;
+    // Squash/stretch — more dramatic for each state
+    let squashX = 1 + Math.sin(time * 4.5) * 0.04;
+    let squashY = 1 - Math.sin(time * 4.5) * 0.04;
+    if (isDashing) {
+      squashX = 1.25;
+      squashY = 0.78;
+    } else if (isCharging) {
+      // Tense compression during charge
+      squashX = 1 - chargeLevel * 0.08;
+      squashY = 1 + chargeLevel * 0.1;
+    }
+    // Tilt
     const tilt =
       isDashing && dashDir
         ? Math.atan2(dashDir.y, dashDir.x) * 0.15
-        : Math.sin(time * 1.6) * 0.03;
+        : isCharging
+          ? -0.05 - chargeLevel * 0.1 // Lean back while charging
+          : Math.sin(time * 1.6) * 0.03;
 
     // Ground shadow
     ctx.save();
@@ -638,6 +793,38 @@ export function drawPlayer(
     );
     ctx.fill();
 
+    // Charge glow circle
+    if (isCharging && chargeLevel > 0.1) {
+      const glowR = player.radius * (1.2 + chargeLevel * 0.8);
+      const glowAlpha = chargeLevel * 0.35;
+      const glowColor = WEAPON_GLOW[weapon] || "rgba(255,255,255,0.5)";
+      ctx.save();
+      ctx.globalAlpha = glowAlpha;
+      const chargeGrad = ctx.createRadialGradient(
+        player.x,
+        player.y,
+        player.radius * 0.5,
+        player.x,
+        player.y,
+        glowR,
+      );
+      chargeGrad.addColorStop(0, glowColor);
+      chargeGrad.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = chargeGrad;
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, glowR, 0, Math.PI * 2);
+      ctx.fill();
+      // Charge shake effect
+      if (chargeLevel > 0.6) {
+        const shake = (chargeLevel - 0.6) * 8;
+        ctx.translate(
+          (Math.random() - 0.5) * shake,
+          (Math.random() - 0.5) * shake,
+        );
+      }
+      ctx.restore();
+    }
+
     // Invulnerability blink
     if (player.invulnerable > 0 && !isDashing && Math.sin(time * 14) > 0) {
       ctx.globalAlpha = 0.4;
@@ -653,7 +840,24 @@ export function drawPlayer(
     ctx.translate(player.x, player.y + bob);
     ctx.rotate(tilt);
     ctx.scale(squashX, squashY);
+
+    // Draw character sprite
     drawFrame(ctx, ninjaSprite, 0, -size / 2, -size / 2, size, size, flipX);
+
+    // Draw weapon overlay on top of character
+    ctx.save();
+    if (flipX) ctx.scale(-1, 1); // weapon follows facing direction
+    drawWeaponOverlay(
+      ctx,
+      weapon,
+      player.radius,
+      time,
+      isDashing,
+      isCharging,
+      chargeLevel,
+    );
+    ctx.restore();
+
     ctx.restore();
     return;
   }

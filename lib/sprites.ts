@@ -39,6 +39,27 @@ const SPRITE_DEFS = {
     frameW: 400,
     frameH: 730,
   },
+  // Weapon-specific player sprites (color belt variants)
+  ninjaBlue: {
+    path: "/sprites/generated/ninja_blue.png",
+    frameW: 230,
+    frameH: 650,
+  },
+  ninjaGreen: {
+    path: "/sprites/generated/ninja_green.png",
+    frameW: 240,
+    frameH: 670,
+  },
+  ninjaRed: {
+    path: "/sprites/generated/ninja_red.png",
+    frameW: 220,
+    frameH: 670,
+  },
+  ninjaPurple: {
+    path: "/sprites/generated/ninja_purple.png",
+    frameW: 230,
+    frameH: 650,
+  },
   // Enemies — NB2 origami characters (rembg extracted)
   samurai: {
     path: "/sprites/generated/enemy_samurai.png",

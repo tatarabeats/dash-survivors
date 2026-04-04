@@ -707,12 +707,23 @@ export class NinjaSurvivors {
     }
     // Update charge level when aiming
     if (this.aimStart && !this.dash) {
+      const prevCharge = this.chargeLevel;
       this.chargeLevel = clamp(
         (performance.now() - this.aimStartTime) / 1200,
         0,
         1,
       );
       this.audio.updateCharge(this.chargeLevel);
+      // Vibrate at charge thresholds
+      if (this.chargeLevel >= 0.5 && prevCharge < 0.5) this.vibrate(15);
+      if (this.chargeLevel >= 0.95 && prevCharge < 0.95) this.vibrate(30);
+      // Subtle pulse vibration while charging
+      if (
+        this.chargeLevel > 0.3 &&
+        Math.floor(this.time * 8) !== Math.floor((this.time - dt) * 8)
+      ) {
+        this.vibrate(5);
+      }
     } else if (!this.dash) {
       this.chargeLevel = Math.max(0, this.chargeLevel - dt * 4);
     }
@@ -2561,6 +2572,9 @@ export class NinjaSurvivors {
       { ...this.player, radius: PLAYER_RADIUS },
       this.dash?.dir ?? null,
       this.time,
+      this.selectedWeapon,
+      this.chargeLevel,
+      Boolean(this.aimStart),
     );
     for (const p of this.particles) drawParticle(this.ctx, p);
     for (const s of this.paperShreds) drawPaperShred(this.ctx, s);
