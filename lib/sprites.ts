@@ -86,6 +86,37 @@ const SPRITE_DEFS = {
     frameW: 350,
     frameH: 1100,
   },
+  // New enemies — kappa, oni, tengu
+  kappa: {
+    path: "/sprites/generated/kappa_enemy.png",
+    frameW: 400,
+    frameH: 700,
+  },
+  kappaAtk: {
+    path: "/sprites/generated/kappa_attack.png",
+    frameW: 400,
+    frameH: 700,
+  },
+  oni: {
+    path: "/sprites/generated/oni_enemy.png",
+    frameW: 400,
+    frameH: 800,
+  },
+  oniAtk: {
+    path: "/sprites/generated/oni_attack.png",
+    frameW: 400,
+    frameH: 800,
+  },
+  tengu: {
+    path: "/sprites/generated/tengu_enemy.png",
+    frameW: 400,
+    frameH: 700,
+  },
+  tenguAtk: {
+    path: "/sprites/generated/tengu_attack.png",
+    frameW: 400,
+    frameH: 700,
+  },
   // Attack poses (reuse idle for now — procedural flash handles attack state)
   samuraiAtk: {
     path: "/sprites/generated/enemy_samurai.png",

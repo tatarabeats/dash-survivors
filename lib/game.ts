@@ -40,7 +40,15 @@ export const GAME_HEIGHT = CANVAS_HEIGHT;
 
 type V = { x: number; y: number };
 type WeaponType = "kusarigama" | "yari" | "katana" | "shuriken";
-type EnemyKind = "samurai" | "shinobi" | "ronin" | "yurei" | "boss";
+type EnemyKind =
+  | "samurai"
+  | "shinobi"
+  | "ronin"
+  | "yurei"
+  | "kappa"
+  | "oni"
+  | "tengu"
+  | "boss";
 type SkillKey = "lightning" | "fire" | "shadow" | "wind" | "kunai";
 type Player = {
   x: number;
@@ -376,6 +384,36 @@ const ENEMY_DEF: Record<
     xp: 1,
     primary: "#d9dde4",
     secondary: "#76808c",
+  },
+  kappa: {
+    cost: 1.8,
+    hp: 90,
+    speed: 28,
+    damage: 16,
+    radius: 24,
+    xp: 3,
+    primary: "#3a8a5c",
+    secondary: "#1a4a2c",
+  },
+  oni: {
+    cost: 3,
+    hp: 180,
+    speed: 22,
+    damage: 35,
+    radius: 34,
+    xp: 5,
+    primary: "#a83232",
+    secondary: "#5a1818",
+  },
+  tengu: {
+    cost: 2,
+    hp: 45,
+    speed: 85,
+    damage: 18,
+    radius: 20,
+    xp: 3,
+    primary: "#4a2a6a",
+    secondary: "#2a1a3a",
   },
   boss: {
     cost: 6,
@@ -1582,15 +1620,19 @@ export class NinjaSurvivors {
         magnet: false,
       });
     }
-    // Gold coin drops
+    // Gold coin drops — kappa drops extra, oni drops well
     const goldValue =
       e.kind === "boss"
         ? 15 + this.wave * 2
-        : e.elite
-          ? 5
-          : Math.random() < 0.4
-            ? 1
-            : 0;
+        : e.kind === "kappa"
+          ? 3 + Math.floor(Math.random() * 3)
+          : e.kind === "oni"
+            ? 4
+            : e.elite
+              ? 5
+              : Math.random() < 0.4
+                ? 1
+                : 0;
     if (goldValue > 0) {
       const ga = Math.random() * Math.PI * 2;
       const gr = Math.random() * 12;
@@ -2029,15 +2071,19 @@ export class NinjaSurvivors {
   }
 
   private spawn(dt: number) {
-    if (this.hasBoss() && this.enemies.length >= MAX_ENEMIES / 2) return;
+    // God mode phase: 10-13 min, enemies flood in
+    const maxEnemies = this.time > 600 && this.time < 780 ? 150 : MAX_ENEMIES;
+    if (this.hasBoss() && this.enemies.length >= maxEnemies / 2) return;
     this.spawnTimer -= dt;
     if (this.spawnTimer > 0) return;
     const danger = 1 + this.time * 0.028;
-    this.spawnTimer = Math.max(0.14, 0.85 - danger * 0.06);
+    this.spawnTimer = Math.max(0.12, 0.85 - danger * 0.06);
     let budget = 1.4 + danger * 0.55 + Math.random() * 0.7;
     if (this.time < 18) budget *= 0.82;
+    if (this.time > 600 && this.time < 780) budget *= 1.5; // God mode flood
+    if (this.time > 780) budget *= 1.8; // Final climax
     if (this.hasBoss()) budget *= 0.85;
-    while (budget > 0 && this.enemies.length < MAX_ENEMIES) {
+    while (budget > 0 && this.enemies.length < maxEnemies) {
       const kind = this.pickEnemy(budget);
       budget -= ENEMY_DEF[kind].cost;
       this.spawnEnemy(kind);
@@ -2065,7 +2111,11 @@ export class NinjaSurvivors {
       kind !== "boss" &&
       this.time > 30 &&
       Math.random() < eliteChance &&
-      (kind === "samurai" || kind === "ronin" || kind === "shinobi");
+      (kind === "samurai" ||
+        kind === "ronin" ||
+        kind === "shinobi" ||
+        kind === "kappa" ||
+        kind === "oni");
     const hpScale =
       kind === "boss"
         ? 1 + this.wave * 0.35
@@ -2114,7 +2164,10 @@ export class NinjaSurvivors {
     add("samurai", 5);
     if (this.time > 12) add("yurei", 3.5);
     if (this.time > 24) add("shinobi", 3.2);
+    if (this.time > 36) add("kappa", 2.5);
     if (this.time > 42) add("ronin", 2.8);
+    if (this.time > 48) add("oni", 1.8);
+    if (this.time > 60) add("tengu", 2.2);
     let roll = Math.random() * c.reduce((s, x) => s + x.weight, 0);
     for (const item of c) {
       roll -= item.weight;

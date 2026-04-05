@@ -1087,7 +1087,15 @@ export function drawAfterimage(
 export function drawEnemy(
   ctx: CanvasRenderingContext2D,
   enemy: {
-    kind: "samurai" | "shinobi" | "ronin" | "yurei" | "boss";
+    kind:
+      | "samurai"
+      | "shinobi"
+      | "ronin"
+      | "yurei"
+      | "kappa"
+      | "oni"
+      | "tengu"
+      | "boss";
     x: number;
     y: number;
     radius: number;
@@ -1131,6 +1139,9 @@ export function drawEnemy(
     shinobi: "shinobi",
     ronin: "ronin",
     yurei: "yurei",
+    kappa: "kappa",
+    oni: "oni",
+    tengu: "tengu",
     boss: "bossSamurai",
   };
   const atkMap: Record<string, string> = {
@@ -1138,6 +1149,9 @@ export function drawEnemy(
     shinobi: "shinobiAtk",
     ronin: "roninAtk",
     yurei: "yureiAtk",
+    kappa: "kappaAtk",
+    oni: "oniAtk",
+    tengu: "tenguAtk",
     boss: "samuraiAtk",
   };
   // Switch to attack pose when hit (flash) or when close to being hit
