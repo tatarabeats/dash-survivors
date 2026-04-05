@@ -443,6 +443,46 @@ export function drawOrb(
   ctx.restore();
 }
 
+export function drawGoldCoin(
+  ctx: CanvasRenderingContext2D,
+  coin: { x: number; y: number; value: number; life: number },
+  time: number,
+) {
+  const pulse = 0.85 + Math.sin(time * 6 + coin.x * 0.1) * 0.15;
+  const radius = (5 + Math.min(coin.value, 15) * 0.3) * pulse;
+  const fadeIn = Math.min(1, (12 - coin.life + 0.3) / 0.3);
+  const fadeOut = coin.life < 2 ? coin.life / 2 : 1;
+  const alpha = fadeIn * fadeOut;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.shadowColor = "#f5d57e";
+  ctx.shadowBlur = 12 * pulse;
+  // Coin body
+  const grad = ctx.createRadialGradient(
+    coin.x,
+    coin.y,
+    0,
+    coin.x,
+    coin.y,
+    radius,
+  );
+  grad.addColorStop(0, "#fff5c0");
+  grad.addColorStop(0.4, "#f5d57e");
+  grad.addColorStop(0.75, "#d4a520");
+  grad.addColorStop(1, "#8b6914");
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(coin.x, coin.y, radius, 0, Math.PI * 2);
+  ctx.fill();
+  // Inner ring
+  ctx.strokeStyle = "rgba(255,255,255,0.4)";
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  ctx.arc(coin.x, coin.y, radius * 0.6, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
 export function drawScroll(
   ctx: CanvasRenderingContext2D,
   scroll: {
@@ -1563,6 +1603,7 @@ export function drawHud(
     wave: number;
     time: number;
     killCount: number;
+    gold: number;
     dashCooldownRatio: number;
     ultimateRatio: number;
     ultimateReady: boolean;
@@ -1632,6 +1673,11 @@ export function drawHud(
   ctx.font = `500 11px ${UI_FONT}`;
   ctx.fillStyle = "rgba(255,255,255,0.58)";
   ctx.fillText(`討伐 ${data.killCount}`, 28, 90);
+  if (data.gold > 0) {
+    ctx.textAlign = "right";
+    ctx.fillStyle = "#f5d57e";
+    ctx.fillText(`🪙 ${data.gold}`, CANVAS_WIDTH - 28, 90);
+  }
 
   const readyRingX = CANVAS_WIDTH - 46;
   const readyRingY = CANVAS_HEIGHT - 46;
@@ -2232,6 +2278,9 @@ export function drawGameOver(
     level: number;
     killCount: number;
     wave: number;
+    runGold: number;
+    totalGold: number;
+    nearestAchievement: { name: string; desc: string; progress: number } | null;
   },
 ) {
   ctx.save();
@@ -2252,12 +2301,15 @@ export function drawGameOver(
     ctx.fill();
   }
 
+  const cx = CANVAS_WIDTH / 2;
+  const baseY = CANVAS_HEIGHT / 2 - 120;
+
   ctx.fillStyle = "#f1ddbb";
   ctx.textAlign = "center";
   ctx.shadowColor = "rgba(207,46,47,0.6)";
   ctx.shadowBlur = 20;
   ctx.font = `800 38px ${DISPLAY_FONT}`;
-  ctx.fillText("散華", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 96);
+  ctx.fillText("散華", cx, baseY);
   ctx.shadowBlur = 0;
 
   const minutes = Math.floor(data.time / 60);
@@ -2266,16 +2318,60 @@ export function drawGameOver(
   ctx.font = `600 17px ${UI_FONT}`;
   ctx.fillText(
     `生存 ${minutes}:${seconds.toString().padStart(2, "0")}`,
-    CANVAS_WIDTH / 2,
-    CANVAS_HEIGHT / 2 - 28,
+    cx,
+    baseY + 50,
   );
-  ctx.fillText(
-    `Lv.${data.level}  討伐 ${data.killCount}`,
-    CANVAS_WIDTH / 2,
-    CANVAS_HEIGHT / 2 + 4,
-  );
+  ctx.fillText(`Lv.${data.level}  討伐 ${data.killCount}`, cx, baseY + 80);
   ctx.fillStyle = "#d8b45e";
-  ctx.fillText(`第${data.wave}波`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 36);
+  ctx.fillText(`第${data.wave}波`, cx, baseY + 110);
+
+  // Gold earned this run
+  if (data.runGold > 0) {
+    ctx.fillStyle = "#f5d57e";
+    ctx.font = `700 20px ${UI_FONT}`;
+    ctx.shadowColor = "rgba(245,213,126,0.5)";
+    ctx.shadowBlur = 10;
+    ctx.fillText(`🪙 +${data.runGold}`, cx, baseY + 150);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "rgba(245,213,126,0.6)";
+    ctx.font = `500 13px ${UI_FONT}`;
+    ctx.fillText(`(合計: ${data.totalGold.toLocaleString()})`, cx, baseY + 172);
+  }
+
+  // Nearest achievement progress bar
+  if (data.nearestAchievement) {
+    const ach = data.nearestAchievement;
+    const barW = 200;
+    const barH = 14;
+    const barX = cx - barW / 2;
+    const barY = baseY + 196;
+    // Label
+    ctx.fillStyle = "rgba(255,255,255,0.7)";
+    ctx.font = `600 12px ${UI_FONT}`;
+    ctx.fillText(`次: ${ach.name}`, cx, barY - 4);
+    // Bar background
+    ctx.fillStyle = "rgba(255,255,255,0.1)";
+    ctx.beginPath();
+    ctx.roundRect(barX, barY + 4, barW, barH, 7);
+    ctx.fill();
+    // Bar fill
+    const fillGrad = ctx.createLinearGradient(
+      barX,
+      0,
+      barX + barW * ach.progress,
+      0,
+    );
+    fillGrad.addColorStop(0, "#d8b45e");
+    fillGrad.addColorStop(1, "#f5d57e");
+    ctx.fillStyle = fillGrad;
+    ctx.beginPath();
+    ctx.roundRect(barX, barY + 4, barW * clamp(ach.progress, 0, 1), barH, 7);
+    ctx.fill();
+    // Percentage
+    ctx.fillStyle = "rgba(255,255,255,0.5)";
+    ctx.font = `500 10px ${UI_FONT}`;
+    ctx.fillText(`${Math.floor(ach.progress * 100)}%`, cx, barY + barH + 16);
+  }
 
   const buttonGradient = ctx.createLinearGradient(
     RESTART_BUTTON.x,
@@ -2311,7 +2407,7 @@ export function drawGameOver(
 
   ctx.fillStyle = "#fff8eb";
   ctx.font = `700 18px ${UI_FONT}`;
-  ctx.fillText("もう一度、斬る", CANVAS_WIDTH / 2, RESTART_BUTTON.y + 35);
+  ctx.fillText("もう一度、斬る", cx, RESTART_BUTTON.y + 35);
   ctx.restore();
 }
 

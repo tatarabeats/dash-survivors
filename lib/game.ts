@@ -1,6 +1,8 @@
 "use client";
 
 import { GameAudio } from "./audio";
+import { MetaStore } from "./systems/meta";
+import type { RunEndStats } from "./systems/meta";
 import {
   CANVAS_HEIGHT,
   CANVAS_WIDTH,
@@ -30,6 +32,7 @@ import {
   drawSlashEffect,
   drawUpgradeOverlay,
   drawVignette,
+  drawGoldCoin,
 } from "./renderer";
 
 export const GAME_WIDTH = CANVAS_WIDTH;
@@ -234,6 +237,14 @@ type DamageNumber = {
   maxLife: number;
   crit: boolean;
 };
+type GoldCoin = {
+  id: number;
+  x: number;
+  y: number;
+  value: number;
+  magnet: boolean;
+  life: number;
+};
 
 const PLAYER_RADIUS = 24;
 const DASH_DURATION = 0.13;
@@ -409,6 +420,10 @@ export class NinjaSurvivors {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private audio = new GameAudio();
+  private meta = new MetaStore();
+  private goldCoins: GoldCoin[] = [];
+  private runGold = 0;
+  private revivalUsed = false;
   private frame = 0;
   private last = 0;
   private dead = false;
@@ -463,16 +478,12 @@ export class NinjaSurvivors {
   private punchX = 0;
   private punchY = 0;
   private levelUpRing = 0;
-  private bestTime = 0;
-  private bestKills = 0;
-  private bestWave = 0;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d")!;
     canvas.width = CANVAS_WIDTH;
     canvas.height = CANVAS_HEIGHT;
-    this.loadBestScore();
     this.openingParticles();
   }
 
@@ -603,20 +614,24 @@ export class NinjaSurvivors {
 
   private makePlayer(): Player {
     const w = WEAPON_DEF[this.selectedWeapon];
+    const baseHp = 120 + this.meta.getBonusMaxHp();
+    const baseDmg =
+      Math.round(38 * w.dashDamageMul) + this.meta.getBonusDamage();
+    const baseMagnet = 82 + this.meta.getBonusMagnet();
     return {
       x: 0,
       y: 0,
-      hp: 120,
-      maxHp: 120,
+      hp: baseHp,
+      maxHp: baseHp,
       level: 1,
       xp: 0,
       xpToNext: BASE_XP,
       killCount: 0,
       invulnerable: 0,
       dashCooldown: 0,
-      dashDamage: Math.round(38 * w.dashDamageMul),
+      dashDamage: baseDmg,
       dashDistance: Math.round(138 * w.dashDistMul),
-      magnetRadius: 82,
+      magnetRadius: baseMagnet,
       shurikenCount: w.shurikenStart,
       shurikenDamage: 12,
       shurikenRadius: 72,
@@ -743,15 +758,53 @@ export class NinjaSurvivors {
     this.updateEnemies(sdt);
     this.updateScrolls(sdt);
     this.updateOrbs(sdt);
+    this.updateGoldCoins(sdt);
     this.spawn(sdt);
     this.maybeBoss();
     if (this.player.hp <= 0) {
-      this.player.hp = 0;
-      this.gameOver = true;
-      this.audio.stopBgm();
-      this.audio.playGameOver();
-      this.vibrate(100);
-      this.saveBestScore();
+      // Revival check
+      if (!this.revivalUsed && this.meta.hasRevival()) {
+        this.revivalUsed = true;
+        this.player.hp = Math.round(this.player.maxHp * 0.3);
+        this.player.invulnerable = 2;
+        this.screenFlash = 0.4;
+        this.shockwaves.push({
+          id: this.next(),
+          x: this.player.x,
+          y: this.player.y,
+          radius: 40,
+          growth: 300,
+          color: "rgba(245,213,126,0.9)",
+          life: 0.5,
+          maxLife: 0.5,
+        });
+        this.rewardBanner = {
+          title: "復活",
+          subtitle: "HP30%で復活した！",
+          color: "#f5d57e",
+          life: 2,
+          maxLife: 2,
+        };
+      } else {
+        this.player.hp = 0;
+        this.gameOver = true;
+        this.audio.stopBgm();
+        this.audio.playGameOver();
+        this.vibrate(100);
+        this.meta.addGold(this.runGold);
+        this.meta.updateRunEnd(this.time, this.player.killCount, this.wave);
+        this.meta.checkAchievements({
+          time: this.time,
+          kills: this.player.killCount,
+          wave: this.wave,
+          level: this.player.level,
+          gold: this.runGold,
+          victory: false,
+          evolved: false,
+          totalKills: this.meta.getTotalKills(),
+          totalRuns: this.meta.getTotalRuns(),
+        });
+      }
     }
   }
 
@@ -1286,7 +1339,11 @@ export class NinjaSurvivors {
         d <= e.radius + PLAYER_RADIUS
       ) {
         const pressure = e.elite ? 1.15 : 1;
-        this.player.hp -= e.damage * dt * pressure * (1 + e.buffed * 1.25);
+        const rawDmg = e.damage * dt * pressure * (1 + e.buffed * 1.25);
+        this.player.hp -= Math.max(
+          0.5,
+          rawDmg - this.meta.getBonusArmor() * dt,
+        );
         this.audio.playHurt();
         this.trauma = Math.min(1, this.trauma + 0.03);
         if (Math.random() < 0.12)
@@ -1359,6 +1416,27 @@ export class NinjaSurvivors {
         magnet: false,
       });
     }
+    // Gold coin drops
+    const goldValue =
+      e.kind === "boss"
+        ? 15 + this.wave * 2
+        : e.elite
+          ? 5
+          : Math.random() < 0.4
+            ? 1
+            : 0;
+    if (goldValue > 0) {
+      const ga = Math.random() * Math.PI * 2;
+      const gr = Math.random() * 12;
+      this.goldCoins.push({
+        id: this.next(),
+        x: e.x + Math.cos(ga) * gr,
+        y: e.y + Math.sin(ga) * gr,
+        value: goldValue,
+        magnet: false,
+        life: 12,
+      });
+    }
     if (e.scrollDrop)
       this.dropScroll(
         e.x,
@@ -1428,7 +1506,9 @@ export class NinjaSurvivors {
         o.y += dir.y * speed * dt;
       }
       if (d <= 16) {
-        this.player.xp += o.value;
+        this.player.xp += Math.round(
+          o.value * (1 + this.meta.getBonusXpGain()),
+        );
         this.orbs.splice(i, 1);
         this.audio.playPickup();
         while (this.player.xp >= this.player.xpToNext) {
@@ -1456,6 +1536,32 @@ export class NinjaSurvivors {
         if (this.queuedLevelUps > 0 && !this.upgrades) {
           this.openUpgradeChoices();
         }
+      }
+    }
+  }
+
+  private updateGoldCoins(dt: number) {
+    const goldGainMul = 1 + this.meta.getBonusGoldGain();
+    for (let i = this.goldCoins.length - 1; i >= 0; i -= 1) {
+      const c = this.goldCoins[i];
+      c.life -= dt;
+      if (c.life <= 0) {
+        this.goldCoins.splice(i, 1);
+        continue;
+      }
+      const d = dist(c, this.player);
+      if (d <= this.player.magnetRadius * 0.8 || c.magnet) {
+        c.magnet = true;
+        const dir = norm({ x: this.player.x - c.x, y: this.player.y - c.y });
+        const speed = 200 + this.player.magnetRadius * 1.3;
+        c.x += dir.x * speed * dt;
+        c.y += dir.y * speed * dt;
+      }
+      if (d <= 18) {
+        const earned = Math.max(1, Math.round(c.value * goldGainMul));
+        this.runGold += earned;
+        this.goldCoins.splice(i, 1);
+        this.audio.playPickup();
       }
     }
   }
@@ -2123,11 +2229,15 @@ export class NinjaSurvivors {
 
   private skillCooldown(key: SkillKey, level: number) {
     const base = SKILL_DEF[key].cooldown;
+    const cdReduction = 1 - this.meta.getBonusCooldownReduction();
     if (key === "fire") return 0;
-    if (key === "shadow") return Math.max(1.6, base - level * 0.35);
-    if (key === "lightning") return Math.max(0.65, base - level * 0.12);
-    if (key === "wind") return Math.max(0.38, base - level * 0.08);
-    return Math.max(0.55, base - level * 0.1);
+    if (key === "shadow")
+      return Math.max(1.2, (base - level * 0.35) * cdReduction);
+    if (key === "lightning")
+      return Math.max(0.5, (base - level * 0.12) * cdReduction);
+    if (key === "wind")
+      return Math.max(0.3, (base - level * 0.08) * cdReduction);
+    return Math.max(0.4, (base - level * 0.1) * cdReduction);
   }
 
   private skillDesc(key: SkillKey) {
@@ -2240,41 +2350,7 @@ export class NinjaSurvivors {
     }
   }
 
-  private loadBestScore() {
-    try {
-      const data = localStorage.getItem("ninja-survivors-best");
-      if (data) {
-        const parsed = JSON.parse(data);
-        this.bestTime = parsed.time ?? 0;
-        this.bestKills = parsed.kills ?? 0;
-        this.bestWave = parsed.wave ?? 0;
-      }
-    } catch {
-      /* */
-    }
-  }
-
-  private saveBestScore(): boolean {
-    const isNew =
-      this.time > this.bestTime || this.player.killCount > this.bestKills;
-    if (this.time > this.bestTime) this.bestTime = this.time;
-    if (this.player.killCount > this.bestKills)
-      this.bestKills = this.player.killCount;
-    if (this.wave > this.bestWave) this.bestWave = this.wave;
-    try {
-      localStorage.setItem(
-        "ninja-survivors-best",
-        JSON.stringify({
-          time: this.bestTime,
-          kills: this.bestKills,
-          wave: this.bestWave,
-        }),
-      );
-    } catch {
-      /* */
-    }
-    return isNew;
-  }
+  // Best scores now managed by MetaStore
 
   private openingParticles() {
     for (let i = 0; i < 18; i += 1) {
@@ -2339,6 +2415,9 @@ export class NinjaSurvivors {
     this.punchX = 0;
     this.punchY = 0;
     this.levelUpRing = 0;
+    this.goldCoins = [];
+    this.runGold = 0;
+    this.revivalUsed = false;
     this.weaponSelect = true;
     this.openingParticles();
   }
@@ -2500,6 +2579,7 @@ export class NinjaSurvivors {
     this.ctx.translate(-camX, -camY);
     for (const flame of this.flames) drawFlamePatch(this.ctx, flame, this.time);
     for (const orb of this.orbs) drawOrb(this.ctx, orb, this.time);
+    for (const coin of this.goldCoins) drawGoldCoin(this.ctx, coin, this.time);
     for (const scroll of this.scrolls) drawScroll(this.ctx, scroll, this.time);
     for (const hazard of this.hazards) drawHazard(this.ctx, hazard, this.time);
     for (const wave of this.shockwaves) drawShockwave(this.ctx, wave);
@@ -2638,6 +2718,7 @@ export class NinjaSurvivors {
       wave: this.wave,
       time: this.time,
       killCount: this.player.killCount,
+      gold: this.runGold,
       dashCooldownRatio:
         1 - clamp(this.player.dashCooldown / DASH_COOLDOWN, 0, 1),
       ultimateRatio: this.player.ultimate / ULTIMATE_MAX,
@@ -2678,13 +2759,29 @@ export class NinjaSurvivors {
         guardTimer: this.upgradeGuard,
         rerolls: this.player.rerolls,
       });
-    if (this.gameOver)
+    if (this.gameOver) {
+      const stats: RunEndStats = {
+        time: this.time,
+        kills: this.player.killCount,
+        wave: this.wave,
+        level: this.player.level,
+        gold: this.runGold,
+        victory: false,
+        evolved: false,
+        totalKills: this.meta.getTotalKills(),
+        totalRuns: this.meta.getTotalRuns(),
+      };
+      const nearest = this.meta.getNearestAchievement(stats);
       drawGameOver(this.ctx, {
         time: this.time,
         level: this.player.level,
         killCount: this.player.killCount,
         wave: this.wave,
+        runGold: this.runGold,
+        totalGold: this.meta.getGold(),
+        nearestAchievement: nearest,
       });
+    }
     // Pause button (always visible during gameplay)
     if (!this.gameOver && !this.upgrades) {
       this.ctx.save();
@@ -2771,15 +2868,27 @@ export class NinjaSurvivors {
       );
       this.ctx.globalAlpha = 1;
       // Best score
-      if (this.bestTime > 0) {
+      const bt = this.meta.getBestTime();
+      if (bt > 0) {
         this.ctx.fillStyle = "rgba(255,255,255,0.5)";
         this.ctx.font = '500 12px "Noto Sans JP", sans-serif';
-        const bestMin = Math.floor(this.bestTime / 60);
-        const bestSec = Math.floor(this.bestTime % 60);
+        const bestMin = Math.floor(bt / 60);
+        const bestSec = Math.floor(bt % 60);
         this.ctx.fillText(
-          `Best: ${bestMin}:${String(bestSec).padStart(2, "0")} / 討伐${this.bestKills} / 第${this.bestWave}波`,
+          `Best: ${bestMin}:${String(bestSec).padStart(2, "0")} / 討伐${this.meta.getBestKills()} / 第${this.meta.getBestWave()}波`,
           CANVAS_WIDTH / 2,
-          CANVAS_HEIGHT / 2 + 80,
+          CANVAS_HEIGHT / 2 + 66,
+        );
+      }
+      // Gold display on title
+      const totalGold = this.meta.getGold();
+      if (totalGold > 0) {
+        this.ctx.fillStyle = "#f5d57e";
+        this.ctx.font = '700 14px "Noto Sans JP", sans-serif';
+        this.ctx.fillText(
+          `🪙 ${totalGold.toLocaleString()}`,
+          CANVAS_WIDTH / 2,
+          CANVAS_HEIGHT / 2 + 86,
         );
       }
       this.ctx.restore();
