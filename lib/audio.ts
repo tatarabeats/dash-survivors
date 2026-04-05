@@ -18,6 +18,8 @@ const SFX = {
   ultimateReady: "/sounds/wave_clear.mp3",
   ultimateCast: "/sounds/wave_clear.mp3",
   scroll: "/sounds/skill_select.mp3",
+  dash: "/sounds/dash.mp3",
+  waveStart: "/sounds/wave_start.mp3",
 } as const;
 
 type SfxName = keyof typeof SFX;
@@ -41,18 +43,39 @@ export class GameAudio {
   private loadingPromise: Promise<void> | null = null;
   private unlocked = false;
   private destroyed = false;
+  private running = false;
 
   // Rate limiters (prevent sound spam)
   private lastPlay: Record<string, number> = {};
 
+  /**
+   * Called on every user gesture (pointerdown).
+   * Must be synchronous up to ctx.resume() to satisfy autoplay policy.
+   */
   async unlock() {
     if (this.destroyed) return;
+
+    // Create AudioContext synchronously on first call
     if (!this.ctx) this.setup();
     if (!this.ctx) return;
-    if (this.ctx.state !== "running") await this.ctx.resume();
+
+    // Resume on EVERY call until running (browsers may need repeated gestures)
+    if (this.ctx.state !== "running") {
+      try {
+        await this.ctx.resume();
+      } catch {
+        // Some browsers reject resume — try again on next gesture
+        return;
+      }
+    }
+
+    this.running = this.ctx.state === "running";
     this.unlocked = true;
+
+    // Start loading buffers (idempotent)
     if (!this.loadingPromise) this.loadingPromise = this.loadAll();
     await this.loadingPromise;
+
     this.startAmbience();
   }
 
@@ -61,65 +84,79 @@ export class GameAudio {
     const i = clamp(value, 0, 1);
     const now = this.ctx.currentTime;
     this.ambienceGain.gain.cancelScheduledValues(now);
-    this.ambienceGain.gain.setTargetAtTime(0.12 + i * 0.12, now, 0.4);
+    this.ambienceGain.gain.setTargetAtTime(0.15 + i * 0.15, now, 0.4);
     this.ambienceFilter.frequency.cancelScheduledValues(now);
     this.ambienceFilter.frequency.setTargetAtTime(700 + i * 1800, now, 0.35);
   }
 
-  // === Game Sound Methods (all use real audio buffers) ===
+  // === Game Sound Methods ===
 
   playDash(ultimate = false) {
+    this.play("dash", {
+      gain: ultimate ? 0.6 : 0.45,
+      rate: ultimate ? 0.8 : 0.92 + Math.random() * 0.16,
+    });
     this.play("slash", {
       gain: ultimate ? 0.5 : 0.35,
       rate: ultimate ? 0.8 : 0.92 + Math.random() * 0.16,
     });
     this.play("hit", {
-      gain: ultimate ? 0.18 : 0.1,
+      gain: ultimate ? 0.2 : 0.12,
       rate: ultimate ? 0.58 : 0.72,
       delay: 0.015,
     });
     if (ultimate) {
-      this.play("ultimateCast", { gain: 0.4, rate: 0.9, delay: 0.02 });
+      this.play("ultimateCast", { gain: 0.45, rate: 0.9, delay: 0.02 });
     }
   }
 
   playKill() {
     if (!this.rateLimit("kill", 0.04)) return;
-    this.play("kill", { gain: 0.3, rate: 0.85 + Math.random() * 0.3 });
+    this.play("kill", { gain: 0.35, rate: 0.85 + Math.random() * 0.3 });
   }
 
   playPickup() {
     if (!this.rateLimit("pickup", 0.03)) return;
-    this.play("pickup", { gain: 0.25, rate: 0.9 + Math.random() * 0.4 });
+    this.play("pickup", { gain: 0.3, rate: 0.9 + Math.random() * 0.4 });
+  }
+
+  playGoldPickup() {
+    if (!this.rateLimit("gold", 0.03)) return;
+    this.play("pickup", { gain: 0.25, rate: 1.2 + Math.random() * 0.3 });
   }
 
   playHurt() {
     if (!this.rateLimit("hurt", 0.08)) return;
-    this.play("hit", { gain: 0.42, rate: 0.78 + Math.random() * 0.12 });
-    this.play("hit", { gain: 0.16, rate: 0.52, delay: 0.02 });
+    this.play("hit", { gain: 0.5, rate: 0.78 + Math.random() * 0.12 });
+    this.play("hit", { gain: 0.2, rate: 0.52, delay: 0.02 });
   }
 
   playOrbitHit() {
     if (!this.rateLimit("orbit", 0.04)) return;
-    this.play("shurikenHit", { gain: 0.2, rate: 0.9 + Math.random() * 0.2 });
+    this.play("shurikenHit", { gain: 0.25, rate: 0.9 + Math.random() * 0.2 });
   }
 
   playLevelUp() {
-    this.play("levelup", { gain: 0.4, rate: 1.0 });
+    this.play("levelup", { gain: 0.5, rate: 1.0 });
   }
 
   playSelect() {
-    this.play("select", { gain: 0.35, rate: 1.0 });
+    this.play("select", { gain: 0.4, rate: 1.0 });
   }
 
   playUpgradeOpen() {
     if (!this.rateLimit("upgrade-open", 0.18)) return;
-    this.play("select", { gain: 0.18, rate: 1.3 });
+    this.play("select", { gain: 0.22, rate: 1.3 });
   }
 
   playGameOver() {
-    this.play("gameover", { gain: 0.45, rate: 0.7 });
-    this.play("kill", { gain: 0.3, rate: 0.5, delay: 0.15 });
+    this.play("gameover", { gain: 0.55, rate: 0.7 });
+    this.play("kill", { gain: 0.35, rate: 0.5, delay: 0.15 });
+  }
+
+  playVictory() {
+    this.play("levelup", { gain: 0.6, rate: 1.2 });
+    this.play("waveStart", { gain: 0.4, rate: 1.1, delay: 0.2 });
   }
 
   playSkill(kind: "lightning" | "fire" | "shadow" | "wind" | "kunai") {
@@ -130,30 +167,34 @@ export class GameAudio {
       wind: "wind",
       kunai: "kunai",
     };
-    this.play(map[kind], { gain: 0.35, rate: 0.9 + Math.random() * 0.2 });
+    this.play(map[kind], { gain: 0.4, rate: 0.9 + Math.random() * 0.2 });
     if (kind === "lightning") {
-      this.play("hit", { gain: 0.14, rate: 0.62, delay: 0.02 });
+      this.play("hit", { gain: 0.16, rate: 0.62, delay: 0.02 });
     } else if (kind === "fire") {
-      this.play("slash", { gain: 0.1, rate: 0.72, delay: 0.01 });
+      this.play("slash", { gain: 0.12, rate: 0.72, delay: 0.01 });
     } else if (kind === "shadow") {
-      this.play("slash", { gain: 0.16, rate: 0.84, delay: 0.02 });
+      this.play("slash", { gain: 0.18, rate: 0.84, delay: 0.02 });
     } else if (kind === "wind") {
-      this.play("pickup", { gain: 0.08, rate: 0.6, delay: 0.01 });
+      this.play("pickup", { gain: 0.1, rate: 0.6, delay: 0.01 });
     } else if (kind === "kunai") {
-      this.play("shurikenHit", { gain: 0.1, rate: 1.08, delay: 0.01 });
+      this.play("shurikenHit", { gain: 0.12, rate: 1.08, delay: 0.01 });
     }
   }
 
   playScroll(kind: "storm" | "blood" | "shadow") {
     this.play("scroll", {
-      gain: 0.4,
+      gain: 0.45,
       rate: kind === "storm" ? 1.2 : kind === "blood" ? 0.9 : 1.0,
     });
   }
 
   playBossWarning() {
-    this.play("bossWarning", { gain: 0.5, rate: 0.8 });
-    this.play("bossWarning", { gain: 0.3, rate: 0.6, delay: 0.3 });
+    this.play("bossWarning", { gain: 0.6, rate: 0.8 });
+    this.play("bossWarning", { gain: 0.35, rate: 0.6, delay: 0.3 });
+  }
+
+  playWaveStart() {
+    this.play("waveStart", { gain: 0.4, rate: 1.0 });
   }
 
   // Charge sound — continuous rising tone while aiming
@@ -162,6 +203,7 @@ export class GameAudio {
 
   startCharge() {
     if (!this.ctx || !this.sfxBus || this.chargeOsc) return;
+    if (!this.running) return; // Don't create oscillators on suspended context
     const osc = this.ctx.createOscillator();
     osc.type = "sine";
     osc.frequency.value = 200;
@@ -177,11 +219,9 @@ export class GameAudio {
   updateCharge(level: number) {
     if (!this.ctx || !this.chargeOsc || !this.chargeGainNode) return;
     const now = this.ctx.currentTime;
-    // Pitch rises with charge level
     this.chargeOsc.frequency.setTargetAtTime(200 + level * 400, now, 0.05);
-    // Volume rises gently
     this.chargeGainNode.gain.setTargetAtTime(
-      Math.min(level * 0.15, 0.12),
+      Math.min(level * 0.18, 0.15),
       now,
       0.05,
     );
@@ -204,12 +244,12 @@ export class GameAudio {
   }
 
   playUltimateReady() {
-    this.play("ultimateReady", { gain: 0.45, rate: 1.0 });
+    this.play("ultimateReady", { gain: 0.5, rate: 1.0 });
   }
 
   playUltimateCast() {
-    this.play("ultimateCast", { gain: 0.5, rate: 0.85 });
-    this.play("slash", { gain: 0.35, rate: 0.7, delay: 0.03 });
+    this.play("ultimateCast", { gain: 0.55, rate: 0.85 });
+    this.play("slash", { gain: 0.4, rate: 0.7, delay: 0.03 });
   }
 
   // BGM — procedural Japanese pentatonic loop
@@ -222,7 +262,6 @@ export class GameAudio {
       clearInterval(this.bgmInterval);
       this.bgmInterval = null;
     }
-    // Mute drone but keep nodes alive
     if (this.bgmGain && this.ctx) {
       this.bgmGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.3);
     }
@@ -230,10 +269,8 @@ export class GameAudio {
 
   resumeBgm() {
     if (!this.ctx || !this.bgmGain || !this.musicBus) return;
-    if (this.bgmNodes.length === 0) return; // not started yet
-    // Restore volume
-    this.bgmGain.gain.setTargetAtTime(0.22, this.ctx.currentTime, 0.5);
-    // Restart arpeggio if not running
+    if (this.bgmNodes.length === 0) return;
+    this.bgmGain.gain.setTargetAtTime(1.0, this.ctx.currentTime, 0.5);
     if (!this.bgmInterval) {
       const scale = [220, 261.6, 293.7, 330, 392, 440, 523.3, 587.3, 660];
       let noteIdx = Math.floor(Math.random() * 5);
@@ -247,7 +284,7 @@ export class GameAudio {
         osc.type = "triangle";
         osc.frequency.value = scale[noteIdx % scale.length];
         const noteGain = this.ctx.createGain();
-        noteGain.gain.setValueAtTime(0.08, now);
+        noteGain.gain.setValueAtTime(0.12, now);
         noteGain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
         osc.connect(noteGain);
         noteGain.connect(this.bgmGain);
@@ -265,26 +302,26 @@ export class GameAudio {
     this.bgmGain.gain.value = 0;
     this.bgmGain.connect(this.musicBus);
 
-    // Fade in
-    this.bgmGain.gain.setTargetAtTime(0.22, this.ctx.currentTime, 1.5);
+    // Fade in over ~2 seconds
+    this.bgmGain.gain.setTargetAtTime(1.0, this.ctx.currentTime, 0.8);
 
-    // Drone pad (low)
+    // Drone pad (low A2)
     const drone = this.ctx.createOscillator();
     drone.type = "sine";
-    drone.frequency.value = 110; // A2
+    drone.frequency.value = 110;
     const droneG = this.ctx.createGain();
-    droneG.gain.value = 0.12;
+    droneG.gain.value = 0.25;
     drone.connect(droneG);
     droneG.connect(this.bgmGain);
     drone.start();
     this.bgmNodes.push(drone);
 
-    // Drone 5th
+    // Drone 5th (E3)
     const drone5 = this.ctx.createOscillator();
     drone5.type = "sine";
-    drone5.frequency.value = 165; // E3
+    drone5.frequency.value = 165;
     const drone5G = this.ctx.createGain();
-    drone5G.gain.value = 0.06;
+    drone5G.gain.value = 0.12;
     drone5.connect(drone5G);
     drone5G.connect(this.bgmGain);
     drone5.start();
@@ -306,7 +343,7 @@ export class GameAudio {
       osc.frequency.value = freq;
 
       const noteGain = this.ctx.createGain();
-      noteGain.gain.setValueAtTime(0.08, now);
+      noteGain.gain.setValueAtTime(0.12, now);
       noteGain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
 
       osc.connect(noteGain);
@@ -314,7 +351,6 @@ export class GameAudio {
       osc.start(now);
       osc.stop(now + 0.7);
 
-      // Semi-random walk through scale
       noteIdx += Math.random() < 0.3 ? 2 : 1;
       if (Math.random() < 0.15) noteIdx = Math.floor(Math.random() * 5);
     }, 400);
@@ -344,6 +380,7 @@ export class GameAudio {
     this.destroyed = true;
     this.stopAmbience();
     this.stopBgm();
+    this.stopCharge();
     if (this.ctx) void this.ctx.close();
     this.ctx = null;
     this.master = null;
@@ -368,23 +405,23 @@ export class GameAudio {
 
     // Master chain: sfxBus + musicBus → compressor → master → destination
     this.master = this.ctx.createGain();
-    this.master.gain.value = 0.85;
+    this.master.gain.value = 1.0;
 
     this.compressor = this.ctx.createDynamicsCompressor();
-    this.compressor.threshold.value = -18;
-    this.compressor.knee.value = 12;
+    this.compressor.threshold.value = -12;
+    this.compressor.knee.value = 10;
     this.compressor.ratio.value = 4;
     this.compressor.attack.value = 0.003;
     this.compressor.release.value = 0.15;
 
     this.musicBus = this.ctx.createGain();
-    this.musicBus.gain.value = 0.5;
+    this.musicBus.gain.value = 0.7;
 
     this.sfxBus = this.ctx.createGain();
-    this.sfxBus.gain.value = 0.9;
+    this.sfxBus.gain.value = 1.0;
 
     this.reverbBus = this.ctx.createGain();
-    this.reverbBus.gain.value = 0.18;
+    this.reverbBus.gain.value = 0.15;
 
     // Reverb (convolver with impulse response)
     this.reverbConvolver = this.ctx.createConvolver();
@@ -396,7 +433,7 @@ export class GameAudio {
     this.ambienceFilter.frequency.value = 1200;
     this.ambienceFilter.Q.value = 0.5;
     this.ambienceGain = this.ctx.createGain();
-    this.ambienceGain.gain.value = 0.12;
+    this.ambienceGain.gain.value = 0.15;
 
     // Routing
     this.musicBus.connect(this.compressor);
@@ -427,18 +464,21 @@ export class GameAudio {
   private async loadAll() {
     if (!this.ctx) return;
     const entries = Object.entries(SFX) as [SfxName, string][];
-    await Promise.all(
+    const results = await Promise.allSettled(
       entries.map(async ([name, path]) => {
-        try {
-          const res = await fetch(path);
-          if (!res.ok) return;
-          const ab = await res.arrayBuffer();
-          this.buffers[name] = await this.ctx!.decodeAudioData(ab);
-        } catch {
-          // Silent fail — game works without individual sounds
-        }
+        const res = await fetch(path);
+        if (!res.ok) throw new Error(`HTTP ${res.status} for ${path}`);
+        const ab = await res.arrayBuffer();
+        this.buffers[name] = await this.ctx!.decodeAudioData(ab);
+        return name;
       }),
     );
+    const failed = results.filter((r) => r.status === "rejected");
+    if (failed.length > 0) {
+      console.warn(
+        `[Audio] ${failed.length}/${entries.length} sounds failed to load`,
+      );
+    }
   }
 
   private startAmbience() {
@@ -469,7 +509,9 @@ export class GameAudio {
     opts: { gain?: number; rate?: number; delay?: number } = {},
   ) {
     if (!this.ctx || !this.sfxBus || this.destroyed) return;
-    if (!this.unlocked) void this.unlock();
+    // If context not running yet, try to resume (will work on next gesture)
+    if (this.ctx.state !== "running") return;
+    if (!this.unlocked) return;
     const buf = this.buffers[name];
     if (!buf) return;
 

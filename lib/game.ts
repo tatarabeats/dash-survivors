@@ -1769,7 +1769,7 @@ export class NinjaSurvivors {
         const earned = Math.max(1, Math.round(c.value * goldGainMul));
         this.runGold += earned;
         this.goldCoins.splice(i, 1);
-        this.audio.playPickup();
+        this.audio.playGoldPickup();
       }
     }
   }
