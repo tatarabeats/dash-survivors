@@ -1660,9 +1660,11 @@ export function drawHud(
   ctx.fillStyle = "#d8b45e";
   ctx.fillText(`第${data.wave}波`, CANVAS_WIDTH / 2, 75);
   ctx.textAlign = "right";
-  const minutes = Math.floor(data.time / 60);
-  const seconds = Math.floor(data.time % 60);
-  ctx.fillStyle = "#f5efe3";
+  const remaining = Math.max(0, 900 - data.time);
+  const minutes = Math.floor(remaining / 60);
+  const seconds = Math.floor(remaining % 60);
+  ctx.fillStyle =
+    remaining <= 60 ? "#cf2e2f" : remaining <= 180 ? "#f5d57e" : "#f5efe3";
   ctx.fillText(
     `${minutes}:${seconds.toString().padStart(2, "0")}`,
     CANVAS_WIDTH - 28,
@@ -2281,19 +2283,26 @@ export function drawGameOver(
     runGold: number;
     totalGold: number;
     nearestAchievement: { name: string; desc: string; progress: number } | null;
+    victory: boolean;
   },
 ) {
   ctx.save();
-  ctx.fillStyle = "rgba(3,4,8,0.86)";
+  ctx.fillStyle = data.victory ? "rgba(8,12,24,0.88)" : "rgba(3,4,8,0.86)";
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-  // Blood drip effect at top
+  // Drip effect at top (gold for victory, blood for death)
   for (let i = 0; i < 8; i++) {
     const x = 30 + i * 48 + Math.sin(i * 2.3) * 14;
     const dripLen = 40 + Math.sin(i * 1.7) * 25;
     const grad = ctx.createLinearGradient(x, 0, x, dripLen);
-    grad.addColorStop(0, "rgba(160,20,20,0.6)");
-    grad.addColorStop(1, "rgba(160,20,20,0)");
+    const dripColor = data.victory
+      ? "rgba(216,180,94,0.6)"
+      : "rgba(160,20,20,0.6)";
+    grad.addColorStop(0, dripColor);
+    grad.addColorStop(
+      1,
+      data.victory ? "rgba(216,180,94,0)" : "rgba(160,20,20,0)",
+    );
     ctx.fillStyle = grad;
     ctx.beginPath();
     ctx.moveTo(x - 3, 0);
@@ -2304,12 +2313,14 @@ export function drawGameOver(
   const cx = CANVAS_WIDTH / 2;
   const baseY = CANVAS_HEIGHT / 2 - 120;
 
-  ctx.fillStyle = "#f1ddbb";
+  ctx.fillStyle = data.victory ? "#f5d57e" : "#f1ddbb";
   ctx.textAlign = "center";
-  ctx.shadowColor = "rgba(207,46,47,0.6)";
+  ctx.shadowColor = data.victory
+    ? "rgba(216,180,94,0.6)"
+    : "rgba(207,46,47,0.6)";
   ctx.shadowBlur = 20;
   ctx.font = `800 38px ${DISPLAY_FONT}`;
-  ctx.fillText("散華", cx, baseY);
+  ctx.fillText(data.victory ? "生還" : "散華", cx, baseY);
   ctx.shadowBlur = 0;
 
   const minutes = Math.floor(data.time / 60);
@@ -2331,7 +2342,11 @@ export function drawGameOver(
     ctx.font = `700 20px ${UI_FONT}`;
     ctx.shadowColor = "rgba(245,213,126,0.5)";
     ctx.shadowBlur = 10;
-    ctx.fillText(`🪙 +${data.runGold}`, cx, baseY + 150);
+    ctx.fillText(
+      `🪙 +${data.runGold}${data.victory ? " (2倍!)" : ""}`,
+      cx,
+      baseY + 150,
+    );
     ctx.shadowBlur = 0;
     ctx.fillStyle = "rgba(245,213,126,0.6)";
     ctx.font = `500 13px ${UI_FONT}`;

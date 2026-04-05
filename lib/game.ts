@@ -255,6 +255,9 @@ const UPGRADE_GUARD = 0.7;
 const MAX_ENEMIES = 80;
 const BASE_XP = 14;
 const ULTIMATE_MAX = 100;
+const RUN_DURATION = 900; // 15 minutes
+const FINAL_BOSS_TIME = 870; // 14:30
+const REAPER_TIME = 900; // 15:00
 
 const WEAPON_DEF: Record<
   WeaponType,
@@ -475,6 +478,11 @@ export class NinjaSurvivors {
   private comboTimer = 0;
   private titleScreen = true;
   private weaponSelect = false;
+  private dojoScreen = false;
+  private dojoScrollY = 0;
+  private finalBossSpawned = false;
+  private reaperSpawned = false;
+  private victory = false;
   private punchX = 0;
   private punchY = 0;
   private levelUpRing = 0;
@@ -503,10 +511,14 @@ export class NinjaSurvivors {
 
   onTouchStart(x: number, y: number) {
     this.resumeAudio();
-    // Title screen: tap to go to weapon select
+    // Dojo screen
+    if (this.dojoScreen) {
+      this.handleDojoTap(x, y);
+      return;
+    }
+    // Title screen: two buttons
     if (this.titleScreen) {
-      this.titleScreen = false;
-      this.weaponSelect = true;
+      this.handleTitleTap(x, y);
       return;
     }
     // Weapon selection screen
@@ -640,6 +652,78 @@ export class NinjaSurvivors {
     };
   }
 
+  private handleTitleTap(x: number, y: number) {
+    const cx = CANVAS_WIDTH / 2;
+    const btnW = 180;
+    const btnH = 48;
+    const startBtnY = CANVAS_HEIGHT / 2 + 20;
+    const dojoBtnY = CANVAS_HEIGHT / 2 + 80;
+    // 出陣 button
+    if (
+      x >= cx - btnW / 2 &&
+      x <= cx + btnW / 2 &&
+      y >= startBtnY &&
+      y <= startBtnY + btnH
+    ) {
+      this.titleScreen = false;
+      this.weaponSelect = true;
+      this.audio.playSelect();
+      return;
+    }
+    // 道場 button
+    if (
+      x >= cx - btnW / 2 &&
+      x <= cx + btnW / 2 &&
+      y >= dojoBtnY &&
+      y <= dojoBtnY + btnH
+    ) {
+      this.titleScreen = false;
+      this.dojoScreen = true;
+      this.dojoScrollY = 0;
+      this.audio.playSelect();
+      return;
+    }
+  }
+
+  private handleDojoTap(x: number, y: number) {
+    const upgrades = this.meta.getAllUpgrades();
+    const startY = 110;
+    const itemH = 64;
+    const gap = 8;
+    const padX = 20;
+    const buyBtnW = 60;
+    const buyBtnH = 32;
+
+    // Back button (top-left)
+    if (x <= 80 && y <= 50) {
+      this.dojoScreen = false;
+      this.titleScreen = true;
+      this.audio.playSelect();
+      return;
+    }
+
+    for (let i = 0; i < upgrades.length; i++) {
+      const u = upgrades[i];
+      const iy = startY + i * (itemH + gap) - this.dojoScrollY;
+      if (iy < 40 || iy > CANVAS_HEIGHT - 20) continue;
+      // Buy button area (right side)
+      const btnX = CANVAS_WIDTH - padX - buyBtnW;
+      const btnY = iy + (itemH - buyBtnH) / 2;
+      if (
+        x >= btnX &&
+        x <= btnX + buyBtnW &&
+        y >= btnY &&
+        y <= btnY + buyBtnH
+      ) {
+        if (u.cost >= 0 && this.meta.getGold() >= u.cost) {
+          this.meta.purchaseUpgrade(u.def.id);
+          this.audio.playLevelUp();
+        }
+        return;
+      }
+    }
+  }
+
   private handleWeaponTap(x: number, y: number) {
     const weapons: WeaponType[] = ["kusarigama", "yari", "katana", "shuriken"];
     const cardW = 160;
@@ -676,7 +760,7 @@ export class NinjaSurvivors {
   }
 
   private update(dt: number) {
-    if (this.titleScreen || this.weaponSelect) {
+    if (this.titleScreen || this.weaponSelect || this.dojoScreen) {
       this.updateFx(dt);
       return;
     }
@@ -761,6 +845,88 @@ export class NinjaSurvivors {
     this.updateGoldCoins(sdt);
     this.spawn(sdt);
     this.maybeBoss();
+    // Final boss at 14:30
+    if (this.time >= FINAL_BOSS_TIME && !this.finalBossSpawned) {
+      this.finalBossSpawned = true;
+      this.spawnEnemy("boss");
+      this.bossWarning = 2.5;
+      this.audio.playBossWarning();
+      this.rewardBanner = {
+        title: "最終ボス",
+        subtitle: "あと30秒…生き延びろ！",
+        color: "#cf2e2f",
+        life: 3,
+        maxLife: 3,
+      };
+    }
+    // Reaper at 15:00 — unkillable, instant death speed pursuer
+    if (this.time >= REAPER_TIME && !this.reaperSpawned) {
+      this.reaperSpawned = true;
+      const a = Math.random() * Math.PI * 2;
+      const range = 500;
+      this.enemies.push({
+        id: this.next(),
+        kind: "boss",
+        x: this.player.x + Math.cos(a) * range,
+        y: this.player.y + Math.sin(a) * range,
+        vx: 0,
+        vy: 0,
+        hp: 999999,
+        maxHp: 999999,
+        radius: 60,
+        speed: 80 + this.time * 0.1,
+        damage: 9999,
+        xp: 0,
+        hit: 0,
+        orbit: 0,
+        seed: Math.random() * Math.PI * 2,
+        primary: "#1a0a2e",
+        secondary: "#4a1a5e",
+        elite: false,
+        rank: 99,
+        attackTimer: 0,
+        scrollDrop: false,
+        buffed: 0,
+        dying: false,
+        deathTimer: 0,
+      });
+      this.rewardBanner = {
+        title: "死神",
+        subtitle: "逃げろ！",
+        color: "#6a2aaa",
+        life: 3,
+        maxLife: 3,
+      };
+    }
+    // Victory: survived past 15 minutes and no reaper damage yet
+    if (this.time >= RUN_DURATION && !this.victory && !this.gameOver) {
+      // Check if all bosses are dead (excluding reaper)
+      const bossesAlive = this.enemies.filter(
+        (e) => e.kind === "boss" && e.hp < 999000,
+      ).length;
+      if (bossesAlive === 0) {
+        this.victory = true;
+        this.gameOver = true;
+        this.audio.stopBgm();
+        this.screenFlash = 0.6;
+        this.vibrate(200);
+        // Double gold for victory
+        this.runGold = Math.floor(this.runGold * 2);
+        this.meta.addGold(this.runGold);
+        this.meta.updateRunEnd(this.time, this.player.killCount, this.wave);
+        this.meta.checkAchievements({
+          time: this.time,
+          kills: this.player.killCount,
+          wave: this.wave,
+          level: this.player.level,
+          gold: this.runGold,
+          victory: true,
+          evolved: false,
+          totalKills: this.meta.getTotalKills(),
+          totalRuns: this.meta.getTotalRuns(),
+        });
+      }
+    }
     if (this.player.hp <= 0) {
       // Revival check
       if (!this.revivalUsed && this.meta.hasRevival()) {
@@ -2418,6 +2584,9 @@ export class NinjaSurvivors {
     this.goldCoins = [];
     this.runGold = 0;
     this.revivalUsed = false;
+    this.finalBossSpawned = false;
+    this.reaperSpawned = false;
+    this.victory = false;
     this.weaponSelect = true;
     this.openingParticles();
   }
@@ -2780,6 +2949,7 @@ export class NinjaSurvivors {
         runGold: this.runGold,
         totalGold: this.meta.getGold(),
         nearestAchievement: nearest,
+        victory: this.victory,
       });
     }
     // Pause button (always visible during gameplay)
@@ -2856,40 +3026,214 @@ export class NinjaSurvivors {
         CANVAS_WIDTH / 2,
         CANVAS_HEIGHT / 2 - 20,
       );
-      // Tap to start (pulsing)
-      const pulse = 0.5 + Math.sin(this.time * 3) * 0.3;
-      this.ctx.globalAlpha = pulse;
-      this.ctx.fillStyle = "#f5efe3";
-      this.ctx.font = '700 16px "Noto Sans JP", sans-serif';
+      // Gold display
+      this.ctx.fillStyle = "#f5d57e";
+      this.ctx.font = '700 14px "Noto Sans JP", sans-serif';
       this.ctx.fillText(
-        "タップでスタート",
+        `🪙 ${this.meta.getGold().toLocaleString()}`,
         CANVAS_WIDTH / 2,
-        CANVAS_HEIGHT / 2 + 40,
+        CANVAS_HEIGHT / 2 + 6,
       );
-      this.ctx.globalAlpha = 1;
+      // Buttons
+      const titleCx = CANVAS_WIDTH / 2;
+      const titleBtnW = 180;
+      const titleBtnH = 48;
+      const startBtnY = CANVAS_HEIGHT / 2 + 20;
+      // 出陣 button
+      {
+        const grad = this.ctx.createLinearGradient(
+          titleCx - titleBtnW / 2,
+          startBtnY,
+          titleCx + titleBtnW / 2,
+          startBtnY,
+        );
+        grad.addColorStop(0, "#6f1417");
+        grad.addColorStop(1, "#c6282a");
+        this.ctx.fillStyle = grad;
+        this.ctx.shadowColor = "rgba(207,46,47,0.4)";
+        this.ctx.shadowBlur = 12;
+        this.ctx.beginPath();
+        this.ctx.roundRect(
+          titleCx - titleBtnW / 2,
+          startBtnY,
+          titleBtnW,
+          titleBtnH,
+          14,
+        );
+        this.ctx.fill();
+        this.ctx.shadowBlur = 0;
+        this.ctx.strokeStyle = "rgba(241,221,187,0.3)";
+        this.ctx.lineWidth = 1;
+        this.ctx.beginPath();
+        this.ctx.roundRect(
+          titleCx - titleBtnW / 2,
+          startBtnY,
+          titleBtnW,
+          titleBtnH,
+          14,
+        );
+        this.ctx.stroke();
+        this.ctx.fillStyle = "#fff8eb";
+        this.ctx.font = '700 18px "Noto Sans JP", sans-serif';
+        this.ctx.fillText("出陣", titleCx, startBtnY + 32);
+      }
+      // 道場 button
+      const dojoBtnY = CANVAS_HEIGHT / 2 + 80;
+      {
+        const grad = this.ctx.createLinearGradient(
+          titleCx - titleBtnW / 2,
+          dojoBtnY,
+          titleCx + titleBtnW / 2,
+          dojoBtnY,
+        );
+        grad.addColorStop(0, "#2a3a4a");
+        grad.addColorStop(1, "#4a6a8a");
+        this.ctx.fillStyle = grad;
+        this.ctx.shadowColor = "rgba(74,106,138,0.3)";
+        this.ctx.shadowBlur = 10;
+        this.ctx.beginPath();
+        this.ctx.roundRect(
+          titleCx - titleBtnW / 2,
+          dojoBtnY,
+          titleBtnW,
+          titleBtnH,
+          14,
+        );
+        this.ctx.fill();
+        this.ctx.shadowBlur = 0;
+        this.ctx.strokeStyle = "rgba(216,180,94,0.25)";
+        this.ctx.lineWidth = 1;
+        this.ctx.beginPath();
+        this.ctx.roundRect(
+          titleCx - titleBtnW / 2,
+          dojoBtnY,
+          titleBtnW,
+          titleBtnH,
+          14,
+        );
+        this.ctx.stroke();
+        this.ctx.fillStyle = "#f5d57e";
+        this.ctx.font = '700 18px "Noto Sans JP", sans-serif';
+        this.ctx.fillText("道場", titleCx, dojoBtnY + 32);
+      }
       // Best score
       const bt = this.meta.getBestTime();
       if (bt > 0) {
-        this.ctx.fillStyle = "rgba(255,255,255,0.5)";
-        this.ctx.font = '500 12px "Noto Sans JP", sans-serif';
+        this.ctx.fillStyle = "rgba(255,255,255,0.4)";
+        this.ctx.font = '500 11px "Noto Sans JP", sans-serif';
         const bestMin = Math.floor(bt / 60);
         const bestSec = Math.floor(bt % 60);
         this.ctx.fillText(
-          `Best: ${bestMin}:${String(bestSec).padStart(2, "0")} / 討伐${this.meta.getBestKills()} / 第${this.meta.getBestWave()}波`,
+          `Best: ${bestMin}:${String(bestSec).padStart(2, "0")} / 討伐${this.meta.getBestKills()}`,
           CANVAS_WIDTH / 2,
-          CANVAS_HEIGHT / 2 + 66,
+          CANVAS_HEIGHT / 2 + 148,
         );
       }
-      // Gold display on title
-      const totalGold = this.meta.getGold();
-      if (totalGold > 0) {
-        this.ctx.fillStyle = "#f5d57e";
+      this.ctx.restore();
+    }
+    // Dojo screen
+    if (this.dojoScreen) {
+      this.ctx.save();
+      this.ctx.fillStyle = "rgba(3,4,8,0.94)";
+      this.ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      // Header
+      this.ctx.fillStyle = "#f1ddbb";
+      this.ctx.textAlign = "center";
+      this.ctx.font = '800 26px "Shippori Mincho", "Yu Mincho", serif';
+      this.ctx.shadowColor = "rgba(216,180,94,0.4)";
+      this.ctx.shadowBlur = 14;
+      this.ctx.fillText("道場", CANVAS_WIDTH / 2, 50);
+      this.ctx.shadowBlur = 0;
+      // Gold
+      this.ctx.fillStyle = "#f5d57e";
+      this.ctx.font = '700 15px "Noto Sans JP", sans-serif';
+      this.ctx.fillText(
+        `🪙 ${this.meta.getGold().toLocaleString()}`,
+        CANVAS_WIDTH / 2,
+        78,
+      );
+      // Back button
+      this.ctx.textAlign = "left";
+      this.ctx.fillStyle = "rgba(255,255,255,0.6)";
+      this.ctx.font = '600 14px "Noto Sans JP", sans-serif';
+      this.ctx.fillText("← 戻る", 16, 36);
+      // Upgrade list
+      const upgrades = this.meta.getAllUpgrades();
+      const dojoStartY = 110;
+      const itemH = 64;
+      const dojoGap = 8;
+      const padX = 16;
+      const buyBtnW = 60;
+      const buyBtnH = 32;
+      this.ctx.textAlign = "left";
+      for (let i = 0; i < upgrades.length; i++) {
+        const u = upgrades[i];
+        const iy = dojoStartY + i * (itemH + dojoGap) - this.dojoScrollY;
+        if (iy < 40 || iy > CANVAS_HEIGHT + 20) continue;
+        // Card background
+        this.ctx.fillStyle = "rgba(20,24,36,0.85)";
+        this.ctx.beginPath();
+        this.ctx.roundRect(padX, iy, CANVAS_WIDTH - padX * 2, itemH, 12);
+        this.ctx.fill();
+        this.ctx.strokeStyle = "rgba(216,180,94,0.15)";
+        this.ctx.lineWidth = 1;
+        this.ctx.beginPath();
+        this.ctx.roundRect(padX, iy, CANVAS_WIDTH - padX * 2, itemH, 12);
+        this.ctx.stroke();
+        // Icon + Name
+        this.ctx.font = "400 22px sans-serif";
+        this.ctx.fillStyle = "#fff";
+        this.ctx.fillText(u.def.icon, padX + 12, iy + 30);
         this.ctx.font = '700 14px "Noto Sans JP", sans-serif';
-        this.ctx.fillText(
-          `🪙 ${totalGold.toLocaleString()}`,
-          CANVAS_WIDTH / 2,
-          CANVAS_HEIGHT / 2 + 86,
-        );
+        this.ctx.fillStyle = "#f5efe3";
+        this.ctx.fillText(u.def.name, padX + 46, iy + 24);
+        // Level dots
+        this.ctx.font = '500 11px "Noto Sans JP", sans-serif';
+        this.ctx.fillStyle = "rgba(255,255,255,0.5)";
+        let dots = "";
+        for (let lv = 0; lv < u.def.maxLevel; lv++) {
+          dots += lv < u.level ? "●" : "○";
+        }
+        this.ctx.fillText(dots, padX + 46, iy + 42);
+        // Description
+        this.ctx.fillStyle = "rgba(255,255,255,0.45)";
+        this.ctx.font = '400 10px "Noto Sans JP", sans-serif';
+        this.ctx.fillText(u.def.desc, padX + 46, iy + 56);
+        // Buy button
+        const btnX = CANVAS_WIDTH - padX - buyBtnW - 8;
+        const btnY = iy + (itemH - buyBtnH) / 2;
+        if (u.cost < 0) {
+          // Maxed
+          this.ctx.fillStyle = "rgba(216,180,94,0.2)";
+          this.ctx.beginPath();
+          this.ctx.roundRect(btnX, btnY, buyBtnW, buyBtnH, 8);
+          this.ctx.fill();
+          this.ctx.fillStyle = "#d8b45e";
+          this.ctx.textAlign = "center";
+          this.ctx.font = '700 12px "Noto Sans JP", sans-serif';
+          this.ctx.fillText("MAX", btnX + buyBtnW / 2, btnY + 21);
+          this.ctx.textAlign = "left";
+        } else {
+          const canBuy = this.meta.getGold() >= u.cost;
+          this.ctx.fillStyle = canBuy
+            ? "rgba(216,180,94,0.25)"
+            : "rgba(60,60,70,0.4)";
+          this.ctx.beginPath();
+          this.ctx.roundRect(btnX, btnY, buyBtnW, buyBtnH, 8);
+          this.ctx.fill();
+          this.ctx.strokeStyle = canBuy
+            ? "rgba(216,180,94,0.4)"
+            : "rgba(100,100,110,0.3)";
+          this.ctx.lineWidth = 1;
+          this.ctx.beginPath();
+          this.ctx.roundRect(btnX, btnY, buyBtnW, buyBtnH, 8);
+          this.ctx.stroke();
+          this.ctx.fillStyle = canBuy ? "#f5d57e" : "rgba(255,255,255,0.3)";
+          this.ctx.textAlign = "center";
+          this.ctx.font = '700 12px "Noto Sans JP", sans-serif';
+          this.ctx.fillText(`🪙${u.cost}`, btnX + buyBtnW / 2, btnY + 21);
+          this.ctx.textAlign = "left";
+        }
       }
       this.ctx.restore();
     }
